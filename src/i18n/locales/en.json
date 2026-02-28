@@ -1,0 +1,76 @@
+{
+  "app": {
+    "name": "Tatara IDE",
+    "welcome": "Welcome to Tatara IDE!"
+  },
+  "menu": {
+    "file": "File",
+    "file.new": "New File",
+    "file.open": "Open File",
+    "file.open_folder": "Open Folder",
+    "file.save": "Save",
+    "file.save_as": "Save As",
+    "file.save_all": "Save All",
+    "file.close": "Close",
+    "file.settings": "Settings",
+    "file.exit": "Exit",
+    "edit": "Edit",
+    "edit.undo": "Undo",
+    "edit.redo": "Redo",
+    "edit.cut": "Cut",
+    "edit.copy": "Copy",
+    "edit.paste": "Paste",
+    "edit.find": "Find",
+    "edit.replace": "Replace",
+    "edit.find_in_files": "Find in Files",
+    "view": "View",
+    "view.explorer": "Explorer",
+    "view.search": "Search",
+    "view.git": "Source Control",
+    "view.debug": "Debug",
+    "view.terminal": "Terminal",
+    "view.command_palette": "Command Palette"
+  },
+  "sidebar": {
+    "explorer": "Explorer",
+    "search": "Search",
+    "git": "Source Control",
+    "debug": "Debug",
+    "extensions": "Extensions"
+  },
+  "editor": {
+    "untitled": "Untitled",
+    "modified": "Modified",
+    "readonly": "Read Only",
+    "line": "Line",
+    "column": "Column",
+    "go_to_line": "Go to Line"
+  },
+  "terminal": {
+    "title": "Terminal",
+    "new": "New Terminal",
+    "mode_edit": "Edit Mode",
+    "mode_raw": "RAW Mode",
+    "paste_confirm": {
+      "title": "You are about to paste multi-line text",
+      "warning": "Text containing newlines will be executed line by line. Unintended commands may be executed.",
+      "mode_line_by_line": "Execute line by line",
+      "mode_text_only": "Paste as text only (don't execute)",
+      "mode_join": "Join as single command",
+      "execute": "Execute",
+      "cancel": "Cancel"
+    }
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "delete": "Delete",
+    "search": "Search",
+    "loading": "Loading...",
+    "error": "Error",
+    "warning": "Warning",
+    "success": "Success"
+  }
+}

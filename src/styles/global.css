@@ -1,0 +1,128 @@
+/* ⚒️ Tatara IDE — Global Styles */
+/* Theme: Midnight (default) */
+
+:root {
+  /* Base colors — Midnight theme */
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #181825;
+  --bg-tertiary: #11111b;
+  --fg-primary: #cdd6f4;
+  --fg-secondary: #bac2de;
+  --fg-muted: #6c7086;
+  --border: #313244;
+  --accent: #89b4fa;
+  --accent-fg: #1e1e2e;
+
+  /* Editor */
+  --editor-bg: #1e1e2e;
+  --editor-fg: #cdd6f4;
+  --editor-line-highlight: #2a2b3d;
+  --editor-selection: #3e4459;
+  --editor-cursor: #f5e0dc;
+  --editor-line-number: #6c7086;
+  --editor-line-number-active: #cdd6f4;
+
+  /* Sidebar */
+  --sidebar-bg: #181825;
+  --sidebar-hover: #2a2b3d;
+  --sidebar-active: #313244;
+
+  /* Status bar */
+  --statusbar-bg: #11111b;
+  --statusbar-fg: #bac2de;
+
+  /* Tab */
+  --tab-active-bg: #1e1e2e;
+  --tab-active-fg: #cdd6f4;
+  --tab-inactive-bg: #181825;
+  --tab-inactive-fg: #6c7086;
+
+  /* Terminal */
+  --terminal-bg: #11111b;
+  --terminal-fg: #cdd6f4;
+
+  /* Semantic */
+  --error: #f38ba8;
+  --warning: #f9e2af;
+  --info: #89b4fa;
+  --success: #a6e3a1;
+
+  /* Git gutter */
+  --git-added: #a6e3a1;
+  --git-modified: #89b4fa;
+  --git-deleted: #f38ba8;
+
+  /* Brand */
+  --brand-primary: #f38ba8;
+  --brand-secondary: #fab387;
+  --brand-accent: #89b4fa;
+
+  /* Font */
+  --font-code: "JetBrains Mono", "Noto Sans JP", monospace;
+  --font-ui: "Noto Sans JP", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-size: 15px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--fg-primary);
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* App layout */
+.app-container {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #45475a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #585b70;
+}
+
+/* Selection */
+::selection {
+  background: var(--editor-selection);
+}

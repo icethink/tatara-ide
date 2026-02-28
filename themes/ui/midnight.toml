@@ -1,0 +1,108 @@
+[meta]
+name = "Midnight"
+type = "dark"
+author = "Tatara IDE Team"
+
+[colors.base]
+background = "#1E1E2E"
+foreground = "#CDD6F4"
+border = "#313244"
+accent = "#89B4FA"
+accent_foreground = "#1E1E2E"
+
+[colors.editor]
+background = "#1E1E2E"
+foreground = "#CDD6F4"
+line_highlight = "#2A2B3D"
+selection = "#3E4459"
+cursor = "#F5E0DC"
+line_number = "#6C7086"
+line_number_active = "#CDD6F4"
+indent_guide = "#313244"
+whitespace = "#45475A"
+bracket_match = "#F9E2AF40"
+
+[colors.sidebar]
+background = "#181825"
+foreground = "#CDD6F4"
+item_hover = "#2A2B3D"
+item_active = "#313244"
+section_header = "#BAC2DE"
+
+[colors.activity_bar]
+background = "#11111B"
+foreground = "#6C7086"
+active_foreground = "#89B4FA"
+badge_background = "#F38BA8"
+badge_foreground = "#1E1E2E"
+
+[colors.status_bar]
+background = "#11111B"
+foreground = "#BAC2DE"
+item_hover = "#2A2B3D"
+
+[colors.tab]
+active_background = "#1E1E2E"
+active_foreground = "#CDD6F4"
+inactive_background = "#181825"
+inactive_foreground = "#6C7086"
+border = "#313244"
+modified_indicator = "#F9E2AF"
+
+[colors.terminal]
+background = "#11111B"
+foreground = "#CDD6F4"
+cursor = "#F5E0DC"
+selection = "#3E4459"
+black = "#45475A"
+red = "#F38BA8"
+green = "#A6E3A1"
+yellow = "#F9E2AF"
+blue = "#89B4FA"
+magenta = "#F5C2E7"
+cyan = "#94E2D5"
+white = "#BAC2DE"
+bright_black = "#585B70"
+bright_red = "#F38BA8"
+bright_green = "#A6E3A1"
+bright_yellow = "#F9E2AF"
+bright_blue = "#89B4FA"
+bright_magenta = "#F5C2E7"
+bright_cyan = "#94E2D5"
+bright_white = "#A6ADC8"
+
+[colors.input]
+background = "#313244"
+foreground = "#CDD6F4"
+border = "#45475A"
+border_focus = "#89B4FA"
+placeholder = "#6C7086"
+
+[colors.button]
+primary_bg = "#89B4FA"
+primary_fg = "#1E1E2E"
+secondary_bg = "#313244"
+secondary_fg = "#CDD6F4"
+danger_bg = "#F38BA8"
+danger_fg = "#1E1E2E"
+
+[colors.notification]
+error = "#F38BA8"
+warning = "#F9E2AF"
+info = "#89B4FA"
+success = "#A6E3A1"
+
+[colors.git_gutter]
+added = "#A6E3A1"
+modified = "#89B4FA"
+deleted = "#F38BA8"
+
+[colors.search]
+match_background = "#F9E2AF40"
+match_border = "#F9E2AF"
+current_match_bg = "#F9E2AF80"
+
+[colors.scrollbar]
+track = "#181825"
+thumb = "#45475A"
+thumb_hover = "#585B70"
