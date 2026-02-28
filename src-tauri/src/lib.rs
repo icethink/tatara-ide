@@ -7,6 +7,7 @@ mod i18n;
 mod profile;
 mod search;
 mod settings;
+mod terminal;
 
 use std::path::Path;
 
@@ -75,6 +76,24 @@ fn get_default_settings() -> settings::Settings {
     settings::Settings::default()
 }
 
+/// Analyze command for danger
+#[tauri::command]
+fn analyze_command(command: String) -> terminal::CommandAnalysis {
+    terminal::analyze_command(&command)
+}
+
+/// Analyze paste content
+#[tauri::command]
+fn analyze_paste(content: String) -> terminal::PasteAnalysis {
+    terminal::analyze_paste(&content)
+}
+
+/// Check if command should trigger RAW mode
+#[tauri::command]
+fn should_use_raw_mode(command: String) -> bool {
+    terminal::should_use_raw_mode(&command)
+}
+
 /// Get translation text
 #[tauri::command]
 fn translate(key: String, locale: Option<String>) -> String {
@@ -101,6 +120,9 @@ pub fn run() {
             get_snippets,
             get_default_settings,
             translate,
+            analyze_command,
+            analyze_paste,
+            should_use_raw_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tatara IDE");
