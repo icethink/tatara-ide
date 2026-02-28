@@ -1,6 +1,7 @@
 // Tatara IDE — Rust backend
 // ⚒️ コードを、鍛える。
 
+mod dotenv;
 mod editor;
 mod filesystem;
 mod i18n;
@@ -8,6 +9,7 @@ mod profile;
 mod search;
 mod settings;
 mod terminal;
+mod theme;
 
 use std::path::Path;
 
@@ -94,6 +96,25 @@ fn should_use_raw_mode(command: String) -> bool {
     terminal::should_use_raw_mode(&command)
 }
 
+/// Parse .env file and extract DB config
+#[tauri::command]
+fn parse_env(path: String) -> Result<dotenv::EnvFile, String> {
+    dotenv::parse_env_file(Path::new(&path))
+}
+
+/// Extract database config from .env
+#[tauri::command]
+fn get_db_config(path: String) -> Result<Option<dotenv::DatabaseConfig>, String> {
+    let env = dotenv::parse_env_file(Path::new(&path))?;
+    Ok(dotenv::extract_db_config(&env))
+}
+
+/// List available themes
+#[tauri::command]
+fn list_themes(user_theme_dir: Option<String>) -> Vec<theme::ThemeInfo> {
+    theme::list_themes(user_theme_dir.as_ref().map(|p| Path::new(p.as_str())))
+}
+
 /// Get translation text
 #[tauri::command]
 fn translate(key: String, locale: Option<String>) -> String {
@@ -123,6 +144,9 @@ pub fn run() {
             analyze_command,
             analyze_paste,
             should_use_raw_mode,
+            parse_env,
+            get_db_config,
+            list_themes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tatara IDE");
