@@ -5,8 +5,6 @@ mod editor;
 mod i18n;
 mod settings;
 
-use tauri::Manager;
-
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("⚒️ Tatara IDE へようこそ、{}さん！", name)

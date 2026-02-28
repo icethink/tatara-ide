@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/refs/heads/main/crates/tauri-config-schema/schema.json",
   "productName": "Tatara IDE",
   "version": "0.1.0",
   "identifier": "com.icethink.tatara-ide",
@@ -10,7 +9,6 @@
     "beforeBuildCommand": "pnpm build"
   },
   "app": {
-    "title": "Tatara IDE",
     "windows": [
       {
         "title": "Tatara IDE",
