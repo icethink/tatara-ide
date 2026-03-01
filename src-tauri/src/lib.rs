@@ -1,6 +1,8 @@
 // Tatara IDE — Rust backend
 // ⚒️ コードを、鍛える。
 
+#![allow(dead_code, unused_imports, unused_variables)]
+
 mod dotenv;
 mod editor;
 mod encoding;
