@@ -197,7 +197,7 @@ function App() {
             />
           )}
 
-          {/* Editor area */}
+          {/* Editor + Terminal column */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
             {/* Tab bar */}
             <TabBar
@@ -210,8 +210,8 @@ function App() {
             {/* Breadcrumb */}
             <Breadcrumb path={activeTab?.path ?? null} />
 
-            {/* Editor content */}
-            <div style={{ flex: 1, position: "relative" }}>
+            {/* Editor content — takes remaining space, shares with terminal */}
+            <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
               {/* Find & Replace overlay */}
               {findVisible && activeTab && (
                 <FindReplace
@@ -250,9 +250,22 @@ function App() {
                 />
               )}
             </div>
+
+            {/* Terminal — bottom of editor area, like VS Code */}
+            {terminalVisible && (
+              <div style={{
+                height: "35%",
+                minHeight: 120,
+                maxHeight: "50%",
+                borderTop: "1px solid var(--border)",
+                display: "flex",
+                flexDirection: "column",
+              }}>
+                <TerminalPanel projectPath={projectPath} />
+              </div>
+            )}
           </div>
         </div>
-        {terminalVisible && <TerminalPanel />}
       </div>
 
       {/* Status Bar */}

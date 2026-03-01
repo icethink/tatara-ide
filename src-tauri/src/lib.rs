@@ -157,6 +157,12 @@ fn normalize_path(path: String) -> String {
     filesystem::normalize_path(&path)
 }
 
+/// Execute a shell command
+#[tauri::command]
+fn exec_command(cmd: String, cwd: Option<String>) -> terminal::ExecResult {
+    terminal::exec_command(&cmd, cwd.as_deref())
+}
+
 /// Detect file encoding
 #[tauri::command]
 fn detect_encoding(bytes: Vec<u8>) -> String {
@@ -225,6 +231,7 @@ pub fn run() {
             git_gutter,
             detect_encoding,
             normalize_path,
+            exec_command,
         ])
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())

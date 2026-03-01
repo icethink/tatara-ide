@@ -15,7 +15,11 @@ interface TerminalLine {
 
 type TerminalMode = "edit" | "raw";
 
-export function TerminalPanel() {
+interface TerminalPanelProps {
+  projectPath?: string | null;
+}
+
+export function TerminalPanel({ projectPath }: TerminalPanelProps = {}) {
   const [lines, setLines] = useState<TerminalLine[]>([
     {
       id: 0,
@@ -32,7 +36,7 @@ export function TerminalPanel() {
   ]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<TerminalMode>("edit");
-  const [cwd] = useState("~/project");
+  const cwd = projectPath ? projectPath.split(/[/\\]/).pop() || projectPath : "~";
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [dangerWarning, setDangerWarning] = useState<string | null>(null);
@@ -131,11 +135,31 @@ export function TerminalPanel() {
       addLine("🔄 RAW モードに自動切替", "system");
     }
 
-    // TODO: Execute via Tauri PTY
-    // For now, mock output
-    addLine(`[mock] コマンドを実行: ${trimmed}`, "output");
-    addLine("(PTY 未接続 — Phase 1 ビルド中)", "system");
-  }, [cwd, mode, addLine, shouldGoRaw]);
+    // Execute via Tauri IPC (Rust std::process::Command)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const result = await invoke<{ stdout: string; stderr: string; code: number }>(
+        "exec_command",
+        { cmd: trimmed, cwd: projectPath || undefined }
+      );
+      if (result.stdout) {
+        for (const line of result.stdout.split("\n")) {
+          if (line !== "") addLine(line, "output");
+        }
+      }
+      if (result.stderr) {
+        for (const line of result.stderr.split("\n")) {
+          if (line.trim()) addLine(line, "error");
+        }
+      }
+      if (result.code !== 0 && !result.stdout && !result.stderr) {
+        addLine(`終了コード: ${result.code}`, "error");
+      }
+    } catch (err) {
+      // Fallback for browser dev mode
+      addLine(`[実行エラー] ${err instanceof Error ? err.message : String(err)}`, "error");
+    }
+  }, [cwd, mode, addLine, shouldGoRaw, projectPath]);
 
   const handleSubmit = useCallback(() => {
     const cmd = input.trim();
@@ -216,15 +240,13 @@ export function TerminalPanel() {
   return (
     <div
       style={{
-        height: 220,
-        minHeight: 100,
-        maxHeight: 400,
+        flex: 1,
         display: "flex",
         flexDirection: "column",
         background: "var(--terminal-bg)",
-        borderTop: "1px solid var(--border)",
         fontFamily: "var(--font-code)",
         fontSize: 13,
+        minHeight: 0,
       }}
       onClick={focusInput}
     >

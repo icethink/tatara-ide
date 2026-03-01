@@ -198,6 +198,52 @@ mod tests {
         assert!(result.warning.is_none());
     }
 
+}
+
+/// Result of executing a shell command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecResult {
+    pub stdout: String,
+    pub stderr: String,
+    pub code: i32,
+}
+
+/// Execute a shell command in the given working directory
+pub fn exec_command(cmd: &str, cwd: Option<&str>) -> ExecResult {
+    let output = if cfg!(target_os = "windows") {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/C", cmd]);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        command.output()
+    } else {
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", cmd]);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        command.output()
+    };
+
+    match output {
+        Ok(out) => ExecResult {
+            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+            code: out.status.code().unwrap_or(-1),
+        },
+        Err(e) => ExecResult {
+            stdout: String::new(),
+            stderr: format!("実行エラー: {}", e),
+            code: -1,
+        },
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+
     #[test]
     fn test_paste_analysis() {
         let paste = "cd /var/www\nrm -rf storage/logs/*\nphp artisan migrate:fresh";
