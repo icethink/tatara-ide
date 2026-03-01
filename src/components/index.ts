@@ -1,6 +1,7 @@
 // ⚒️ Tatara IDE — Component Exports
 
 export { ActivityBar } from "./ActivityBar";
+export { Autocomplete } from "./Autocomplete";
 export { Breadcrumb } from "./Breadcrumb";
 export { CommandPalette } from "./CommandPalette";
 export { DiffViewer } from "./DiffViewer";
