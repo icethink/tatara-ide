@@ -1,0 +1,92 @@
+name: "Release Alpha"
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-tauri:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+            target: ""
+          # - platform: macos-latest
+          #   args: "--target universal-apple-darwin"
+          # - platform: ubuntu-22.04
+          #   args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Tatara IDE ${{ github.ref_name }}"
+          releaseBody: |
+            ## ⚒️ Tatara IDE ${{ github.ref_name }} — Alpha Release
+
+            **コードを、鍛える。**
+
+            Laravel初心者のための軽量IDE。Rust + Tauri で鍛えた高速エディタ。
+
+            ### ✨ Features
+            - Canvas ベースの高速テキストエディタ
+            - PHP/JavaScript/TypeScript/Rust/HTML/CSS シンタックスハイライト
+            - Laravel フレームワーク自動検出 & Artisan コマンド統合
+            - Git 統合（ステータス/差分/コミット/ステージ）
+            - .env パーサー & データベース設定自動検出
+            - ターミナル（危険コマンド検出 & RAW モード自動切替）
+            - コマンドパレット (Ctrl+Shift+P) & クイックオープン (Ctrl+P)
+            - 検索置換 (Ctrl+F/H) & プロジェクト全体検索
+            - ミニマップ & ブレッドクラム
+            - Shift-JIS/EUC-JP エンコーディング自動検出
+            - 8 ビルトインテーマ（Midnight デフォルト）
+            - 日本語 UI（英語切替可）
+
+            ### ⚠️ Alpha 注意事項
+            - ターミナルの PTY 接続は未実装（UI のみ）
+            - tree-sitter は未統合（正規表現ベースのハイライト）
+            - 一部機能は開発中です
+
+            ### 📊 Stats
+            - 12 Rust modules / 57 tests / 25 IPC commands
+            - 17 React components / 4 hooks / 3 libraries
+            - Build: ~250KB gzip
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}
