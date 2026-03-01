@@ -159,6 +159,77 @@ export async function listThemes(userThemeDir?: string): Promise<ThemeInfo[]> {
   return invoke("list_themes", { userThemeDir: userThemeDir ?? null });
 }
 
+// ── Git ──
+
+export interface GitStatus {
+  branch: string;
+  ahead: number;
+  behind: number;
+  staged: { path: string; status: string }[];
+  modified: { path: string; status: string }[];
+  untracked: string[];
+  is_repo: boolean;
+}
+
+export interface GitLogEntry {
+  hash: string;
+  short_hash: string;
+  author: string;
+  date: string;
+  message: string;
+}
+
+export interface GitDiff {
+  file: string;
+  hunks: {
+    header: string;
+    lines: { content: string; line_type: string; old_line: number | null; new_line: number | null }[];
+  }[];
+}
+
+export interface GutterDecoration {
+  line: number;
+  kind: "Added" | "Modified" | "Deleted";
+}
+
+export async function gitStatus(path: string): Promise<GitStatus> {
+  return invoke("git_status", { path });
+}
+
+export async function gitLog(path: string, count?: number): Promise<GitLogEntry[]> {
+  return invoke("git_log", { path, count: count ?? null });
+}
+
+export async function gitDiff(path: string, file: string): Promise<GitDiff> {
+  return invoke("git_diff", { path, file });
+}
+
+export async function gitStage(path: string, file: string): Promise<void> {
+  return invoke("git_stage", { path, file });
+}
+
+export async function gitUnstage(path: string, file: string): Promise<void> {
+  return invoke("git_unstage", { path, file });
+}
+
+export async function gitCommit(path: string, message: string): Promise<string> {
+  return invoke("git_commit", { path, message });
+}
+
+export async function gitDiscard(path: string, file: string): Promise<void> {
+  return invoke("git_discard", { path, file });
+}
+
+export async function gitGutter(path: string, file: string): Promise<GutterDecoration[]> {
+  return invoke("git_gutter", { path, file });
+}
+
+// ── Encoding ──
+
+export async function detectEncoding(bytes: number[]): Promise<string> {
+  return invoke("detect_encoding", { bytes });
+}
+
 // ── i18n ──
 
 export async function translate(key: string, locale?: string): Promise<string> {

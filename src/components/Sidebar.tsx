@@ -2,11 +2,13 @@
 
 import { FileTree, type FileNode } from "./FileTree";
 import { SearchPanel } from "./SearchPanel";
+import { GitPanel } from "./GitPanel";
 
 interface SidebarProps {
   activePanel: string;
   fileTree?: FileNode | null;
   selectedFilePath?: string;
+  projectPath?: string | null;
   onFileSelect?: (path: string) => void;
   onFileOpen?: (path: string, line?: number) => void;
 }
@@ -15,6 +17,7 @@ export function Sidebar({
   activePanel,
   fileTree,
   selectedFilePath,
+  projectPath,
   onFileSelect,
   onFileOpen,
 }: SidebarProps) {
@@ -54,7 +57,12 @@ export function Sidebar({
         {activePanel === "search" && (
           <SearchPanel onFileOpen={onFileOpen ?? (() => {})} />
         )}
-        {activePanel === "git" && <GitPanel />}
+        {activePanel === "git" && (
+          <GitPanel
+            projectPath={projectPath ?? null}
+            onFileOpen={onFileOpen ?? (() => {})}
+          />
+        )}
         {activePanel === "debug" && <PlaceholderPanel text="デバッグ (Phase 4)" />}
         {activePanel === "extensions" && <PlaceholderPanel text="拡張機能 (将来)" />}
       </div>
@@ -71,66 +79,6 @@ function panelTitle(panel: string): string {
     case "extensions": return "拡張機能";
     default: return panel;
   }
-}
-
-function GitPanel() {
-  return (
-    <div style={{ padding: "12px", color: "var(--fg-secondary)", fontSize: 13 }}>
-      <div style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}>
-        <div style={{ color: "var(--fg-muted)", fontSize: 12 }}>
-          ソース管理 (Phase 3)
-        </div>
-
-        {/* Git status preview */}
-        <div style={{
-          padding: "8px 12px",
-          background: "var(--sidebar-active)",
-          borderRadius: 4,
-          fontSize: 12,
-        }}>
-          <div style={{ marginBottom: 4, color: "var(--fg-muted)" }}>変更</div>
-          <div style={{ color: "var(--git-added)" }}>+ 新規ファイル</div>
-          <div style={{ color: "var(--git-modified)" }}>~ 変更ファイル</div>
-          <div style={{ color: "var(--git-deleted)" }}>- 削除ファイル</div>
-        </div>
-
-        {/* Commit message */}
-        <textarea
-          placeholder="コミットメッセージを入力..."
-          rows={3}
-          style={{
-            width: "100%",
-            padding: "6px 8px",
-            background: "#313244",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            color: "var(--fg-primary)",
-            fontSize: 12,
-            resize: "vertical",
-            outline: "none",
-          }}
-        />
-
-        <button style={{
-          width: "100%",
-          padding: "6px",
-          background: "var(--accent)",
-          color: "var(--accent-fg)",
-          border: "none",
-          borderRadius: 4,
-          fontSize: 12,
-          cursor: "pointer",
-          fontWeight: 600,
-        }}>
-          ✓ コミット
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function PlaceholderPanel({ text }: { text: string }) {

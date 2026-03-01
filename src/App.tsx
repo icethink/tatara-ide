@@ -130,6 +130,7 @@ function App() {
               activePanel={activePanel}
               fileTree={fileTree}
               selectedFilePath={activeTab?.path}
+              projectPath={projectPath}
               onFileSelect={openFile}
               onFileOpen={openFile}
             />
