@@ -1,6 +1,6 @@
 // ⚒️ DiffViewer — Side-by-side or unified diff display
 
-import { useMemo } from "react";
+// DiffViewer
 
 interface DiffLine {
   content: string;
@@ -17,10 +17,10 @@ interface DiffHunk {
 interface DiffViewerProps {
   hunks: DiffHunk[];
   filename: string;
-  mode?: "unified" | "side-by-side";
+  _mode?: "unified" | "side-by-side";
 }
 
-export function DiffViewer({ hunks, filename, mode = "unified" }: DiffViewerProps) {
+export function DiffViewer({ hunks, filename }: DiffViewerProps) {
   if (hunks.length === 0) {
     return (
       <div style={{

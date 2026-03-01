@@ -32,7 +32,7 @@ export function TerminalPanel() {
   ]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<TerminalMode>("edit");
-  const [cwd, setCwd] = useState("~/project");
+  const [cwd] = useState("~/project");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [dangerWarning, setDangerWarning] = useState<string | null>(null);

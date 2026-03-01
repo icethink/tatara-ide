@@ -140,13 +140,7 @@ function App() {
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
             {/* Tab bar */}
             <TabBar
-              tabs={editor.tabs.map(t => ({
-                id: t.id,
-                filename: t.filename,
-                path: t.path,
-                modified: t.modified,
-                language: t.language,
-              }))}
+              tabs={editor.tabs}
               activeTabId={editor.activeTabId}
               onTabSelect={editor.setActiveTabId}
               onTabClose={editor.closeTab}

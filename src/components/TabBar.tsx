@@ -5,8 +5,9 @@ import { useCallback } from "react";
 export interface Tab {
   id: string;
   path: string;
-  name: string;
+  filename: string;
   modified: boolean;
+  language?: string;
 }
 
 interface TabBarProps {
@@ -86,11 +87,11 @@ function TabItem({
       }}
     >
       {/* File icon */}
-      <span style={{ fontSize: 13 }}>{fileIcon(tab.name)}</span>
+      <span style={{ fontSize: 13 }}>{fileIcon(tab.filename)}</span>
 
       {/* File name */}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-        {tab.name}
+        {tab.filename}
       </span>
 
       {/* Modified indicator / close button */}

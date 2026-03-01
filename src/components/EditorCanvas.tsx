@@ -8,8 +8,8 @@
 // - IME composition (Japanese input via hidden textarea)
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { CanvasRenderer, DEFAULT_RENDER_CONFIG } from "../lib/renderer";
-import type { CursorPos, Selection, RenderState, ColoredSpan } from "../lib/renderer";
+import { CanvasRenderer } from "../lib/renderer";
+import type { Selection, RenderState, ColoredSpan } from "../lib/renderer";
 import { tokenizeLine, colorizeTokens } from "../lib/syntax";
 
 interface EditorCanvasProps {

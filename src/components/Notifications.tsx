@@ -2,7 +2,7 @@
 //
 // Shows temporary notifications (save success, errors, warnings, info)
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 
 export interface Notification {
   id: number;

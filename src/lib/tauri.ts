@@ -43,7 +43,7 @@ export interface SearchOptions {
 }
 
 export async function searchFiles(opts: SearchOptions): Promise<SearchResult[]> {
-  return invoke("search_files", opts);
+  return invoke("search_files", { ...opts });
 }
 
 // ── Framework Detection ──
