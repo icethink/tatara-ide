@@ -23,21 +23,24 @@ use std::path::Path;
 #[tauri::command]
 fn read_directory(path: String, max_depth: Option<usize>) -> Result<filesystem::FileNode, String> {
     let depth = max_depth.unwrap_or(10);
-    filesystem::read_directory_tree(Path::new(&path), depth)
-        .ok_or_else(|| "ディレクトリを読み込めませんでした".to_string())
+    let resolved = filesystem::resolve_project_path(&path);
+    filesystem::read_directory_tree(Path::new(&resolved), depth)
+        .ok_or_else(|| format!("ディレクトリを読み込めませんでした: {}", resolved))
 }
 
 /// Read file content with encoding detection
 #[tauri::command]
 fn read_file(path: String) -> Result<filesystem::FileContent, String> {
-    filesystem::read_file_content(Path::new(&path))
+    let resolved = filesystem::resolve_project_path(&path);
+    filesystem::read_file_content(Path::new(&resolved))
 }
 
 /// Write file content
 #[tauri::command]
 fn write_file(path: String, content: String, line_ending: Option<String>) -> Result<(), String> {
     let le = line_ending.as_deref().unwrap_or("lf");
-    filesystem::write_file_content(Path::new(&path), &content, le)
+    let resolved = filesystem::resolve_project_path(&path);
+    filesystem::write_file_content(Path::new(&resolved), &content, le)
 }
 
 /// Search in project files
@@ -148,6 +151,12 @@ fn git_gutter(path: String, file: String) -> Result<Vec<git::GutterDecoration>, 
     git::gutter_decorations(Path::new(&path), &file)
 }
 
+/// Normalize a path (WSL \\wsl$ → /home/...)
+#[tauri::command]
+fn normalize_path(path: String) -> String {
+    filesystem::normalize_path(&path)
+}
+
 /// Detect file encoding
 #[tauri::command]
 fn detect_encoding(bytes: Vec<u8>) -> String {
@@ -215,7 +224,9 @@ pub fn run() {
             git_discard,
             git_gutter,
             detect_encoding,
+            normalize_path,
         ])
+        .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running Tatara IDE");
 }

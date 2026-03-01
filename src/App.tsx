@@ -17,13 +17,20 @@ import type { FileNode } from "./components/FileTree";
 
 // ── Tauri IPC (graceful fallback for browser dev) ──
 let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
+let tauriDialogOpen: ((opts: Record<string, unknown>) => Promise<string | string[] | null>) | null = null;
 
 async function initTauri() {
   try {
-    const mod = await import("@tauri-apps/api/core");
-    tauriInvoke = mod.invoke;
+    const core = await import("@tauri-apps/api/core");
+    tauriInvoke = core.invoke;
   } catch {
-    // Running in browser — use mock data
+    // Running in browser
+  }
+  try {
+    const dialog = await import("@tauri-apps/plugin-dialog");
+    tauriDialogOpen = dialog.open as typeof tauriDialogOpen;
+  } catch {
+    // dialog plugin not available
   }
 }
 initTauri();
@@ -33,13 +40,24 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return null;
 }
 
+async function openFolderDialog(): Promise<string | null> {
+  if (tauriDialogOpen) {
+    const result = await tauriDialogOpen({ directory: true, multiple: false, title: "プロジェクトフォルダを選択" });
+    if (typeof result === "string") return result;
+    if (Array.isArray(result) && result.length > 0) return result[0];
+  }
+  return null;
+}
+
 function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [terminalVisible, setTerminalVisible] = useState(false);
   const [activePanel, setActivePanel] = useState<string>("explorer");
   const [commandPaletteVisible, setCommandPaletteVisible] = useState(false);
   const [quickOpenVisible, setQuickOpenVisible] = useState(false);
-  const [projectPath, setProjectPath] = useState<string | null>(null);
+  const [projectPath, setProjectPath] = useState<string | null>(() => {
+    try { return localStorage.getItem("tatara:lastProject"); } catch { return null; }
+  });
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
   const [framework, setFramework] = useState<string | null>(null);
   const [findVisible, setFindVisible] = useState(false);
@@ -48,7 +66,15 @@ function App() {
   const editor = useEditorStore();
   const { notifications, notify, dismiss } = useNotifications();
 
-  // ── File Operations ──
+  // ── Project / Folder Operations ──
+
+  const openFolder = useCallback(async () => {
+    const path = await openFolderDialog();
+    if (path) {
+      setProjectPath(path);
+      notify(`📂 ${path}`, "info", { duration: 3000 });
+    }
+  }, [notify]);
 
   const loadFileTree = useCallback(async (path: string) => {
     const tree = await invoke<FileNode>("read_directory", { path });
@@ -92,9 +118,31 @@ function App() {
 
     // Detect framework
     invoke<{ name: string }>("detect_framework", { path: projectPath }).then(fw => {
-      if (fw) setFramework(fw.name);
+      if (fw) {
+        setFramework(fw.name);
+        notify(`🔥 ${fw.name} プロジェクトを検出しました`, "info", { duration: 3000 });
+      }
     });
-  }, [projectPath, loadFileTree]);
+
+    // WSL path warning
+    invoke<string | null>("check_wsl_warning", { path: projectPath }).then(warning => {
+      if (warning) {
+        notify(warning, "warning", { duration: 8000 });
+      }
+    });
+
+    // Update window title
+    const folderName = projectPath.split(/[/\\]/).pop() || projectPath;
+    document.title = `${folderName} — Tatara IDE`;
+
+    // Remember last opened project + recent list
+    try {
+      localStorage.setItem("tatara:lastProject", projectPath);
+      const recent = JSON.parse(localStorage.getItem("tatara:recentProjects") || "[]") as string[];
+      const updated = [projectPath, ...recent.filter((p: string) => p !== projectPath)].slice(0, 10);
+      localStorage.setItem("tatara:recentProjects", JSON.stringify(updated));
+    } catch {}
+  }, [projectPath, loadFileTree, notify]);
 
   // ── Keybinding Handlers ──
 
@@ -104,6 +152,7 @@ function App() {
       "file.quickOpen": () => setQuickOpenVisible(true),
       "panel.toggleTerminal": () => setTerminalVisible(v => !v),
       "panel.toggleSidebar": () => setSidebarVisible(v => !v),
+      "file.openFolder": openFolder,
       "editor.find": () => setFindVisible(true),
       "editor.replace": () => setFindVisible(true),
       "editor.goToLine": () => setGoToLineVisible(true),
@@ -195,11 +244,8 @@ function App() {
                 />
               ) : (
                 <WelcomeScreen
-                  onOpenFolder={async () => {
-                    // TODO: Use Tauri dialog to pick folder
-                    // For now, try current directory
-                    setProjectPath(".");
-                  }}
+                  onOpenFolder={openFolder}
+                  onOpenPath={setProjectPath}
                   framework={framework}
                 />
               )}
@@ -252,11 +298,21 @@ function App() {
 
 function WelcomeScreen({
   onOpenFolder,
+  onOpenPath,
   framework,
 }: {
   onOpenFolder: () => void;
+  onOpenPath?: (path: string) => void;
   framework: string | null;
 }) {
+  const [recentProjects, setRecentProjects] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("tatara:recentProjects");
+      if (stored) setRecentProjects(JSON.parse(stored));
+    } catch {}
+  }, []);
   return (
     <div style={{
       display: "flex",
@@ -289,6 +345,35 @@ function WelcomeScreen({
         <QuickAction icon="📄" label="新しいファイル" shortcut="Ctrl+N" onClick={() => {}} />
         <QuickAction icon="⌨️" label="コマンドパレット" shortcut="Ctrl+Shift+P" onClick={() => {}} />
       </div>
+
+      {/* Recent projects */}
+      {recentProjects.length > 0 && onOpenPath && (
+        <div style={{ marginTop: 16, width: 280 }}>
+          <div style={{ fontSize: 11, color: "var(--fg-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            最近のプロジェクト
+          </div>
+          {recentProjects.slice(0, 5).map((p) => (
+            <div
+              key={p}
+              onClick={() => onOpenPath(p)}
+              style={{
+                padding: "4px 8px",
+                fontSize: 12,
+                color: "var(--fg-secondary)",
+                cursor: "pointer",
+                borderRadius: 4,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--sidebar-hover)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              📁 {p.split(/[/\\]/).pop()} <span style={{ color: "var(--fg-muted)", fontSize: 11 }}>{p}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {framework && (
         <div style={{

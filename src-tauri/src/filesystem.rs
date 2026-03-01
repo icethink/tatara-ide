@@ -186,20 +186,61 @@ pub struct FileContent {
 
 /// Detect if a path is inside WSL
 pub fn is_wsl_path(path: &str) -> bool {
-    path.starts_with("/mnt/") || path.starts_with("\\\\wsl")
+    path.starts_with("/mnt/") || path.contains("\\\\wsl") || path.contains("//wsl")
+}
+
+/// Normalize path for cross-platform compatibility.
+/// Handles:
+/// - \\wsl$\Ubuntu\home\user\project → /home/user/project (for WSL commands)
+/// - \\wsl.localhost\Ubuntu\... → same
+/// - Regular Windows paths stay as-is
+pub fn normalize_path(path: &str) -> String {
+    let p = path.replace('\\', "/");
+
+    // \\wsl$\distro\... or \\wsl.localhost\distro\...
+    if let Some(rest) = p.strip_prefix("//wsl$/") .or_else(|| p.strip_prefix("//wsl.localhost/")) {
+        // Skip distro name (e.g., "Ubuntu/")
+        if let Some(idx) = rest.find('/') {
+            return rest[idx..].to_string();
+        }
+    }
+
+    // Also handle the raw \\wsl$ form
+    if p.starts_with("//wsl$") || p.starts_with("//wsl.localhost") {
+        // Try to extract after distro
+        let parts: Vec<&str> = p.splitn(4, '/').collect();
+        if parts.len() >= 4 {
+            return format!("/{}", parts[3]);
+        }
+    }
+
+    path.to_string()
 }
 
 /// Warn if project is on Windows filesystem (slow I/O)
 pub fn check_wsl_path_warning(project_path: &str) -> Option<String> {
-    if project_path.starts_with("/mnt/c/") || project_path.starts_with("/mnt/d/") {
+    let normalized = normalize_path(project_path);
+    if normalized.starts_with("/mnt/c/") || normalized.starts_with("/mnt/d/") {
         Some(
-            "プロジェクトが Windows ファイルシステム上にあります。\n\
+            "⚠️ プロジェクトが Windows ファイルシステム上にあります。\n\
              WSL ネイティブパス（~/projects/ 等）に移動すると大幅に高速化されます。"
                 .to_string(),
         )
     } else {
         None
     }
+}
+
+/// Convert a Windows/WSL path to the form needed for file operations.
+/// On Windows, \\wsl$ paths can be used directly.
+/// This returns the path suitable for std::fs operations.
+pub fn resolve_project_path(path: &str) -> String {
+    // On Windows, \\wsl$ UNC paths work with std::fs
+    // Just normalize backslashes
+    if path.contains("wsl$") || path.contains("wsl.localhost") {
+        return path.replace('/', "\\");
+    }
+    path.to_string()
 }
 
 /// Detect Laravel project by checking for artisan and composer.json
@@ -258,7 +299,30 @@ mod tests {
     #[test]
     fn test_wsl_path_detection() {
         assert!(is_wsl_path("/mnt/c/Users/user/project"));
+        assert!(is_wsl_path("\\\\wsl$\\Ubuntu\\home\\user"));
+        assert!(is_wsl_path("\\\\wsl.localhost\\Ubuntu\\home\\user"));
         assert!(!is_wsl_path("/home/user/projects/app"));
+        assert!(!is_wsl_path("C:\\Users\\user\\project"));
+    }
+
+    #[test]
+    fn test_normalize_path() {
+        assert_eq!(
+            normalize_path("\\\\wsl$\\Ubuntu\\home\\user\\project"),
+            "/home/user/project"
+        );
+        assert_eq!(
+            normalize_path("\\\\wsl.localhost\\Ubuntu\\home\\user\\project"),
+            "/home/user/project"
+        );
+        assert_eq!(
+            normalize_path("C:\\Users\\user\\project"),
+            "C:\\Users\\user\\project"
+        );
+        assert_eq!(
+            normalize_path("/home/user/project"),
+            "/home/user/project"
+        );
     }
 
     #[test]

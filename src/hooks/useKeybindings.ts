@@ -33,6 +33,7 @@ export const defaultBindings: KeyBinding[] = [
   { key: "ctrl+alt+l", action: "editor.format", label: "コードフォーマット", category: "edit" },
   { key: "ctrl+`", action: "panel.toggleTerminal", label: "ターミナル切替", category: "panel" },
   { key: "ctrl+b", action: "panel.toggleSidebar", label: "サイドバー切替", category: "panel" },
+  { key: "ctrl+o", action: "file.openFolder", label: "フォルダを開く", category: "file" },
   { key: "ctrl+f", action: "editor.find", label: "検索", category: "search" },
   { key: "ctrl+h", action: "editor.replace", label: "置換", category: "search" },
   { key: "ctrl+w", action: "file.close", label: "タブを閉じる", category: "file" },
