@@ -153,6 +153,32 @@ const RUST: LanguageRules = {
   typePattern: /\b[A-Z][a-zA-Z0-9_]*\b/g,
 };
 
+const BLADE: LanguageRules = {
+  keywords: [
+    ...PHP.keywords,
+    // Blade directives (without @)
+    "if", "else", "elseif", "endif", "foreach", "endforeach",
+    "for", "endfor", "while", "endwhile", "forelse", "empty", "endforelse",
+    "switch", "case", "break", "endswitch",
+    "unless", "endunless", "isset", "endisset", "empty", "endempty",
+    "auth", "endauth", "guest", "endguest",
+    "can", "endcan", "cannot", "endcannot",
+    "section", "endsection", "yield", "extends", "include",
+    "component", "endcomponent", "slot", "endslot",
+    "push", "endpush", "stack", "prepend", "endprepend",
+    "once", "endonce", "verbatim", "endverbatim",
+    "php", "endphp", "props",
+  ],
+  builtins: PHP.builtins,
+  constants: PHP.constants,
+  lineComment: "//",
+  blockCommentStart: "{{--",
+  blockCommentEnd: "--}}",
+  stringDelimiters: ['"', "'"],
+  decorator: "@",
+  typePattern: /\b[A-Z][a-zA-Z0-9_]*\b/g,
+};
+
 const LANGUAGE_MAP: Record<string, LanguageRules> = {
   php: PHP,
   javascript: JAVASCRIPT,
@@ -161,8 +187,8 @@ const LANGUAGE_MAP: Record<string, LanguageRules> = {
   css: CSS,
   scss: CSS,
   rust: RUST,
-  vue: JAVASCRIPT, // Simplified — would need mixed-mode
-  blade: PHP,
+  vue: JAVASCRIPT,
+  blade: BLADE,
 };
 
 // ── Tokenizer ──
@@ -181,6 +207,42 @@ export function tokenizeLine(line: string, language: string): Token[] {
     if (line[i] === " " || line[i] === "\t") {
       i++;
       continue;
+    }
+
+    // Blade-specific: {{ expression }} and {!! expression !!}
+    if ((language === "blade" || language === "html") && line[i] === "{") {
+      // {!! raw !!}
+      if (line.startsWith("{!!", i)) {
+        const end = line.indexOf("!!}", i + 3);
+        tokens.push({
+          start: i,
+          end: end !== -1 ? end + 3 : line.length,
+          type: "variable",
+        });
+        i = end !== -1 ? end + 3 : line.length;
+        continue;
+      }
+      // {{ escaped }}
+      if (line.startsWith("{{", i) && !line.startsWith("{{--", i)) {
+        const end = line.indexOf("}}", i + 2);
+        tokens.push({
+          start: i,
+          end: end !== -1 ? end + 2 : line.length,
+          type: "variable",
+        });
+        i = end !== -1 ? end + 2 : line.length;
+        continue;
+      }
+    }
+
+    // Blade directives: @if, @foreach, etc.
+    if (language === "blade" && line[i] === "@" && i + 1 < line.length && /[a-zA-Z]/.test(line[i + 1])) {
+      const dirMatch = line.slice(i).match(/^@([a-zA-Z]+)/);
+      if (dirMatch) {
+        tokens.push({ start: i, end: i + dirMatch[0].length, type: "keyword" });
+        i += dirMatch[0].length;
+        continue;
+      }
     }
 
     // Line comment

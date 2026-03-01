@@ -9,6 +9,9 @@ import { CommandPalette } from "./components/CommandPalette";
 import { QuickOpen } from "./components/QuickOpen";
 import { useKeybindings } from "./hooks/useKeybindings";
 import { useEditorStore } from "./hooks/useEditorStore";
+import { FindReplace } from "./components/FindReplace";
+import { Breadcrumb } from "./components/Breadcrumb";
+import { NotificationContainer, useNotifications } from "./components/Notifications";
 import type { FileNode } from "./components/FileTree";
 
 // ── Tauri IPC (graceful fallback for browser dev) ──
@@ -38,8 +41,10 @@ function App() {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
   const [framework, setFramework] = useState<string | null>(null);
+  const [findVisible, setFindVisible] = useState(false);
 
   const editor = useEditorStore();
+  const { notifications, notify, dismiss } = useNotifications();
 
   // ── File Operations ──
 
@@ -73,8 +78,9 @@ function App() {
     const success = await invoke("write_file", { path: tab.path, content: tab.content });
     if (success !== null) {
       editor.markTabSaved(tab.id);
+      notify(`${tab.filename} を保存しました`, "success", { duration: 2000 });
     }
-  }, [editor]);
+  }, [editor, notify]);
 
   // ── Project Detection ──
 
@@ -96,10 +102,13 @@ function App() {
       "file.quickOpen": () => setQuickOpenVisible(true),
       "panel.toggleTerminal": () => setTerminalVisible(v => !v),
       "panel.toggleSidebar": () => setSidebarVisible(v => !v),
+      "editor.find": () => setFindVisible(true),
+      "editor.replace": () => setFindVisible(true),
       "file.save": saveFile,
       "file.close": () => {
         if (editor.activeTabId) editor.closeTab(editor.activeTabId);
       },
+      "file.reopenClosed": () => editor.reopenClosedTab(),
     }),
     [saveFile, editor],
   );
@@ -146,8 +155,31 @@ function App() {
               onTabClose={editor.closeTab}
             />
 
+            {/* Breadcrumb */}
+            <Breadcrumb path={activeTab?.path ?? null} />
+
             {/* Editor content */}
             <div style={{ flex: 1, position: "relative" }}>
+              {/* Find & Replace overlay */}
+              {findVisible && activeTab && (
+                <FindReplace
+                  visible={findVisible}
+                  content={activeTab.content}
+                  onClose={() => setFindVisible(false)}
+                  onHighlight={() => {}}
+                  onReplace={(oldText, newText, all) => {
+                    if (!activeTab) return;
+                    const content = all
+                      ? activeTab.content.replaceAll(oldText, newText)
+                      : activeTab.content.replace(oldText, newText);
+                    editor.updateTabContent(activeTab.id, content);
+                  }}
+                  onJumpToLine={(line, col) => {
+                    if (activeTab) editor.updateCursor(activeTab.id, line, col);
+                  }}
+                />
+              )}
+
               {activeTab ? (
                 <EditorCanvas
                   content={activeTab.content}
@@ -197,6 +229,9 @@ function App() {
         onClose={() => setQuickOpenVisible(false)}
         onSelect={(path) => openFile(path)}
       />
+
+      {/* Notifications */}
+      <NotificationContainer notifications={notifications} onDismiss={dismiss} />
     </div>
   );
 }

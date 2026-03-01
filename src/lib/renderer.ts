@@ -19,6 +19,8 @@ export interface RenderConfig {
   selectionBg: string;
   matchBracketBg: string;
   currentLineBg: string;
+  indentGuideColor: string;
+  whitespaceColor: string;
   // Layout
   gutterWidth: number;
   padding: number;
@@ -38,6 +40,8 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   selectionBg: "rgba(137, 180, 250, 0.25)",
   matchBracketBg: "rgba(243, 139, 168, 0.3)",
   currentLineBg: "rgba(49, 50, 68, 0.5)",
+  indentGuideColor: "rgba(88, 91, 112, 0.2)",
+  whitespaceColor: "rgba(88, 91, 112, 0.4)",
   gutterWidth: 60,
   padding: 8,
 };
@@ -52,6 +56,8 @@ export interface Selection {
   end: CursorPos;
 }
 
+export type GutterMark = "added" | "modified" | "deleted";
+
 export interface RenderState {
   lines: string[];
   cursor: CursorPos;
@@ -59,8 +65,8 @@ export interface RenderState {
   scrollTop: number;
   matchBracketPos: CursorPos | null;
   totalLines: number;
-  /** Per-line syntax coloring. If provided, used instead of plain text */
   lineTokens?: ColoredSpan[][];
+  gutterMarks?: Map<number, GutterMark>;
 }
 
 export interface ColoredSpan {
@@ -77,6 +83,8 @@ export class CanvasRenderer {
   private cursorVisible: boolean = true;
   private cursorBlinkInterval: ReturnType<typeof setInterval> | null = null;
   private dpr: number;
+  public showWhitespace: boolean = true;
+  public showIndentGuides: boolean = true;
 
   constructor(canvas: HTMLCanvasElement, config?: Partial<RenderConfig>) {
     this.canvas = canvas;
@@ -192,6 +200,28 @@ export class CanvasRenderer {
       const numX = gutterW - cfg.padding - ctx.measureText(lineNum).width;
       ctx.fillText(lineNum, numX, y + cfg.lineHeight / 2);
 
+      // Git gutter marks
+      if (state.gutterMarks) {
+        const mark = state.gutterMarks.get(lineIdx);
+        if (mark) {
+          const markColor = mark === "added" ? "#a6e3a1"
+            : mark === "modified" ? "#89b4fa"
+            : "#f38ba8";
+          ctx.fillStyle = markColor;
+          ctx.fillRect(gutterW - 3, y, 3, cfg.lineHeight);
+        }
+      }
+
+      // Indent guides
+      if (state.lines[i]) {
+        this.renderIndentGuides(ctx, state.lines[i], y, gutterW, cfg);
+      }
+
+      // Whitespace visualization
+      if (this.showWhitespace) {
+        this.renderWhitespace(ctx, state.lines[i] ?? "", y, gutterW, cfg);
+      }
+
       // Text content (with syntax highlighting if available)
       const textX = gutterW + cfg.padding;
       const textY = y + cfg.lineHeight / 2;
@@ -305,6 +335,80 @@ export class CanvasRenderer {
     const targetY = line * this.config.lineHeight;
     const halfView = viewportHeight / 2;
     return Math.max(0, targetY - halfView);
+  }
+
+  // ── Indent Guides ──
+
+  private renderIndentGuides(
+    ctx: CanvasRenderingContext2D,
+    line: string,
+    y: number,
+    gutterW: number,
+    cfg: RenderConfig
+  ): void {
+    if (!this.showIndentGuides) return;
+
+    // Count leading whitespace
+    const match = line.match(/^(\s*)/);
+    if (!match || match[1].length === 0) return;
+
+    const leadingSpaces = match[1].replace(/\t/g, " ".repeat(cfg.tabSize)).length;
+    const indentLevels = Math.floor(leadingSpaces / cfg.tabSize);
+
+    ctx.strokeStyle = cfg.indentGuideColor;
+    ctx.lineWidth = 1;
+
+    for (let level = 0; level < indentLevels; level++) {
+      const x = gutterW + cfg.padding + level * cfg.tabSize * this.charWidth + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + cfg.lineHeight);
+      ctx.stroke();
+    }
+  }
+
+  // ── Whitespace Visualization ──
+
+  private renderWhitespace(
+    ctx: CanvasRenderingContext2D,
+    line: string,
+    y: number,
+    gutterW: number,
+    cfg: RenderConfig
+  ): void {
+    const midY = y + cfg.lineHeight / 2;
+    const dotSize = 1.5;
+
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      const x = gutterW + cfg.padding + i * this.charWidth;
+
+      if (ch === " ") {
+        // Show trailing spaces and spaces within indent
+        const isTrailing = line.slice(i).trim().length === 0;
+        const isLeading = line.slice(0, i).trim().length === 0;
+
+        if (isTrailing || isLeading) {
+          ctx.fillStyle = cfg.whitespaceColor;
+          ctx.beginPath();
+          ctx.arc(x + this.charWidth / 2, midY, dotSize, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (ch === "\t") {
+        ctx.strokeStyle = cfg.whitespaceColor;
+        ctx.lineWidth = 1;
+        const tabW = cfg.tabSize * this.charWidth;
+        const arrowY = midY;
+        ctx.beginPath();
+        ctx.moveTo(x + 2, arrowY);
+        ctx.lineTo(x + tabW - 2, arrowY);
+        // Arrow head
+        ctx.lineTo(x + tabW - 5, arrowY - 3);
+        ctx.moveTo(x + tabW - 2, arrowY);
+        ctx.lineTo(x + tabW - 5, arrowY + 3);
+        ctx.stroke();
+      }
+    }
   }
 
   // ── Cleanup ──

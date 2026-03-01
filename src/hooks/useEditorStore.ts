@@ -64,6 +64,7 @@ export function useEditorStore() {
   const [tabs, setTabs] = useState<EditorTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
+  const [closedTabs, setClosedTabs] = useState<EditorTab[]>([]);
   const tabIdCounter = useRef(0);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
@@ -112,11 +113,16 @@ export function useEditorStore() {
 
   const closeTab = useCallback(
     (tabId: string) => {
+      // Save to closed tabs for restore
+      const closing = tabs.find((t) => t.id === tabId);
+      if (closing) {
+        setClosedTabs((prev) => [closing, ...prev].slice(0, 20));
+      }
+
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === tabId);
         const next = prev.filter((t) => t.id !== tabId);
 
-        // If closing active tab, switch to neighbor
         if (tabId === activeTabId && next.length > 0) {
           const newIdx = Math.min(idx, next.length - 1);
           setActiveTabId(next[newIdx].id);
@@ -127,8 +133,21 @@ export function useEditorStore() {
         return next;
       });
     },
-    [activeTabId]
+    [activeTabId, tabs]
   );
+
+  const reopenClosedTab = useCallback(() => {
+    if (closedTabs.length === 0) return;
+
+    const [tab, ...rest] = closedTabs;
+    setClosedTabs(rest);
+
+    // Reopen with new id
+    const id = `tab-${++tabIdCounter.current}`;
+    const newTab = { ...tab, id };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(id);
+  }, [closedTabs]);
 
   const closeOtherTabs = useCallback(
     (keepTabId: string) => {
@@ -185,6 +204,7 @@ export function useEditorStore() {
     recentFiles,
     openFile,
     closeTab,
+    reopenClosedTab,
     closeOtherTabs,
     closeAllTabs,
     setActiveTabId,
