@@ -23,10 +23,10 @@ toml = "0.8"
 walkdir = "2"
 ignore = "0.4"
 globset = "0.4"
+encoding_rs = "0.8"
 # tree-sitter = "0.24"
 # portable-pty = "0.8"
 # alacritty_terminal = "0.24"
-# encoding_rs = "0.8"
 # arboard = "3"
 
 [features]

@@ -3,7 +3,9 @@
 
 mod dotenv;
 mod editor;
+mod encoding;
 mod filesystem;
+mod git;
 mod i18n;
 mod profile;
 mod search;
@@ -96,6 +98,61 @@ fn should_use_raw_mode(command: String) -> bool {
     terminal::should_use_raw_mode(&command)
 }
 
+/// Get git status for a project
+#[tauri::command]
+fn git_status(path: String) -> Result<git::GitStatus, String> {
+    git::status(Path::new(&path))
+}
+
+/// Get git log
+#[tauri::command]
+fn git_log(path: String, count: Option<usize>) -> Result<Vec<git::GitLogEntry>, String> {
+    git::log(Path::new(&path), count.unwrap_or(20))
+}
+
+/// Get git diff for a file
+#[tauri::command]
+fn git_diff(path: String, file: String) -> Result<git::GitDiff, String> {
+    git::diff_file(Path::new(&path), &file)
+}
+
+/// Stage a file
+#[tauri::command]
+fn git_stage(path: String, file: String) -> Result<(), String> {
+    git::stage_file(Path::new(&path), &file)
+}
+
+/// Unstage a file
+#[tauri::command]
+fn git_unstage(path: String, file: String) -> Result<(), String> {
+    git::unstage_file(Path::new(&path), &file)
+}
+
+/// Commit staged changes
+#[tauri::command]
+fn git_commit(path: String, message: String) -> Result<String, String> {
+    git::commit(Path::new(&path), &message)
+}
+
+/// Discard changes in a file
+#[tauri::command]
+fn git_discard(path: String, file: String) -> Result<(), String> {
+    git::discard_changes(Path::new(&path), &file)
+}
+
+/// Get git gutter decorations for a file
+#[tauri::command]
+fn git_gutter(path: String, file: String) -> Result<Vec<git::GutterDecoration>, String> {
+    git::gutter_decorations(Path::new(&path), &file)
+}
+
+/// Detect file encoding
+#[tauri::command]
+fn detect_encoding(bytes: Vec<u8>) -> String {
+    let enc = encoding::detect_encoding(&bytes);
+    encoding::encoding_display_name(&enc).to_string()
+}
+
 /// Parse .env file and extract DB config
 #[tauri::command]
 fn parse_env(path: String) -> Result<dotenv::EnvFile, String> {
@@ -147,6 +204,15 @@ pub fn run() {
             parse_env,
             get_db_config,
             list_themes,
+            git_status,
+            git_log,
+            git_diff,
+            git_stage,
+            git_unstage,
+            git_commit,
+            git_discard,
+            git_gutter,
+            detect_encoding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tatara IDE");
