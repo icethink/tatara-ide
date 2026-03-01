@@ -13,6 +13,8 @@ import { FindReplace } from "./components/FindReplace";
 import { Breadcrumb } from "./components/Breadcrumb";
 import { GoToLine } from "./components/GoToLine";
 import { NotificationContainer, useNotifications } from "./components/Notifications";
+import { ImageViewer } from "./components/ImageViewer";
+import { MarkdownPreview } from "./components/MarkdownPreview";
 import type { FileNode } from "./components/FileTree";
 
 // ── Tauri IPC (graceful fallback for browser dev) ──
@@ -90,11 +92,18 @@ function App() {
       return;
     }
 
+    // Image files don't need content loading
+    const ext = path.split(".").pop()?.toLowerCase() ?? "";
+    const imageExts = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "avif", "svg"]);
+    if (imageExts.has(ext)) {
+      editor.openFile(path, "", line);
+      return;
+    }
+
     const result = await invoke<{ content: string; encoding: string }>("read_file", { path });
     if (result) {
       editor.openFile(path, result.content, line);
     } else {
-      // Fallback: open with empty content (browser dev mode)
       editor.openFile(path, `// ${path}\n// (File content unavailable in browser mode)\n`, line);
     }
   }, [editor]);
@@ -233,15 +242,21 @@ function App() {
               )}
 
               {activeTab ? (
-                <EditorCanvas
-                  content={activeTab.content}
-                  language={activeTab.language}
-                  cursorLine={activeTab.cursorLine}
-                  cursorColumn={activeTab.cursorColumn}
-                  onContentChange={(content) => editor.updateTabContent(activeTab.id, content)}
-                  onCursorChange={(line, col) => editor.updateCursor(activeTab.id, line, col)}
-                  onSave={saveFile}
-                />
+                activeTab.viewType === "image" || activeTab.viewType === "svg" ? (
+                  <ImageViewer path={activeTab.path} filename={activeTab.filename} />
+                ) : activeTab.viewType === "markdown" ? (
+                  <MarkdownPreview content={activeTab.content} filename={activeTab.filename} />
+                ) : (
+                  <EditorCanvas
+                    content={activeTab.content}
+                    language={activeTab.language}
+                    cursorLine={activeTab.cursorLine}
+                    cursorColumn={activeTab.cursorColumn}
+                    onContentChange={(content) => editor.updateTabContent(activeTab.id, content)}
+                    onCursorChange={(line, col) => editor.updateCursor(activeTab.id, line, col)}
+                    onSave={saveFile}
+                  />
+                )
               ) : (
                 <WelcomeScreen
                   onOpenFolder={openFolder}

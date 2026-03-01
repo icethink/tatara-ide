@@ -157,6 +157,38 @@ fn git_gutter(path: String, file: String) -> Result<Vec<git::GutterDecoration>, 
     git::gutter_decorations(Path::new(&path), &file)
 }
 
+/// Read file as raw bytes (for images, binary files)
+#[tauri::command]
+fn read_file_raw(path: String) -> Result<serde_json::Value, String> {
+    let resolved = filesystem::resolve_project_path(&path);
+    let bytes = std::fs::read(&resolved)
+        .map_err(|e| format!("ファイル読み込みエラー: {}", e))?;
+
+    // Return as base64 for efficient transfer
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+    // Determine MIME type
+    let ext = resolved.rsplit('.').next().unwrap_or("").to_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "ico" => "image/x-icon",
+        "bmp" => "image/bmp",
+        "avif" => "image/avif",
+        _ => "application/octet-stream",
+    };
+
+    Ok(serde_json::json!({
+        "base64": b64,
+        "mime": mime,
+        "size": bytes.len(),
+    }))
+}
+
 /// Normalize a path (WSL \\wsl$ → /home/...)
 #[tauri::command]
 fn normalize_path(path: String) -> String {
@@ -271,6 +303,7 @@ pub fn run() {
             git_discard,
             git_gutter,
             detect_encoding,
+            read_file_raw,
             normalize_path,
             exec_command,
             pty_spawn,

@@ -3,6 +3,8 @@
 
 import { useState, useCallback, useRef } from "react";
 
+export type ViewType = "editor" | "image" | "markdown" | "svg";
+
 export interface EditorTab {
   id: string;
   path: string;
@@ -10,6 +12,7 @@ export interface EditorTab {
   content: string;
   modified: boolean;
   language: string;
+  viewType: ViewType;
   cursorLine: number;
   cursorColumn: number;
   scrollTop: number;
@@ -60,6 +63,16 @@ function detectLanguage(path: string): string {
   return langMap[ext] ?? "plaintext";
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "avif"]);
+
+function detectViewType(path: string): ViewType {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (ext === "svg") return "svg"; // Can be viewed as image or code
+  if (ext === "md" || ext === "mdx") return "markdown";
+  return "editor";
+}
+
 export function useEditorStore() {
   const [tabs, setTabs] = useState<EditorTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -94,6 +107,7 @@ export function useEditorStore() {
         content,
         modified: false,
         language: detectLanguage(path),
+        viewType: detectViewType(path),
         cursorLine: line ?? 0,
         cursorColumn: 0,
         scrollTop: 0,
