@@ -11,6 +11,7 @@ import { useKeybindings } from "./hooks/useKeybindings";
 import { useEditorStore } from "./hooks/useEditorStore";
 import { FindReplace } from "./components/FindReplace";
 import { Breadcrumb } from "./components/Breadcrumb";
+import { GoToLine } from "./components/GoToLine";
 import { NotificationContainer, useNotifications } from "./components/Notifications";
 import type { FileNode } from "./components/FileTree";
 
@@ -42,6 +43,7 @@ function App() {
   const [fileTree, setFileTree] = useState<FileNode | null>(null);
   const [framework, setFramework] = useState<string | null>(null);
   const [findVisible, setFindVisible] = useState(false);
+  const [goToLineVisible, setGoToLineVisible] = useState(false);
 
   const editor = useEditorStore();
   const { notifications, notify, dismiss } = useNotifications();
@@ -104,6 +106,7 @@ function App() {
       "panel.toggleSidebar": () => setSidebarVisible(v => !v),
       "editor.find": () => setFindVisible(true),
       "editor.replace": () => setFindVisible(true),
+      "editor.goToLine": () => setGoToLineVisible(true),
       "file.save": saveFile,
       "file.close": () => {
         if (editor.activeTabId) editor.closeTab(editor.activeTabId);
@@ -228,6 +231,15 @@ function App() {
         visible={quickOpenVisible}
         onClose={() => setQuickOpenVisible(false)}
         onSelect={(path) => openFile(path)}
+      />
+
+      <GoToLine
+        visible={goToLineVisible}
+        totalLines={activeTab ? activeTab.content.split("\n").length : 0}
+        onClose={() => setGoToLineVisible(false)}
+        onJump={(line) => {
+          if (activeTab) editor.updateCursor(activeTab.id, line, 0);
+        }}
       />
 
       {/* Notifications */}

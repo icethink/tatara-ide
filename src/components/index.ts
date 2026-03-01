@@ -8,6 +8,8 @@ export { EditorCanvas } from "./EditorCanvas";
 export { FileTree } from "./FileTree";
 export { FindReplace } from "./FindReplace";
 export { GitPanel } from "./GitPanel";
+export { GoToLine } from "./GoToLine";
+export { ShortcutHint, ShortcutToast } from "./ShortcutHint";
 export { Minimap } from "./Minimap";
 export { NotificationContainer, useNotifications } from "./Notifications";
 export { QuickOpen } from "./QuickOpen";
