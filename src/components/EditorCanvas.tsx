@@ -9,7 +9,8 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { CanvasRenderer, DEFAULT_RENDER_CONFIG } from "../lib/renderer";
-import type { CursorPos, Selection, RenderState } from "../lib/renderer";
+import type { CursorPos, Selection, RenderState, ColoredSpan } from "../lib/renderer";
+import { tokenizeLine, colorizeTokens } from "../lib/syntax";
 
 interface EditorCanvasProps {
   content: string;
@@ -89,13 +90,21 @@ export function EditorCanvas({
       scrollTop
     );
 
+    // Tokenize visible lines for syntax highlighting
+    const visibleLines = lines.slice(start, end);
+    const lineTokens: ColoredSpan[][] = visibleLines.map((line) => {
+      const tokens = tokenizeLine(line, language);
+      return colorizeTokens(line, tokens);
+    });
+
     const state: RenderState = {
-      lines: lines.slice(start, end),
+      lines: visibleLines,
       cursor: { line: cursorLine, column: cursorColumn },
       selection,
       scrollTop,
       matchBracketPos: null, // TODO: bracket matching
       totalLines,
+      lineTokens,
     };
 
     renderer.render(state);

@@ -59,6 +59,13 @@ export interface RenderState {
   scrollTop: number;
   matchBracketPos: CursorPos | null;
   totalLines: number;
+  /** Per-line syntax coloring. If provided, used instead of plain text */
+  lineTokens?: ColoredSpan[][];
+}
+
+export interface ColoredSpan {
+  text: string;
+  color: string;
 }
 
 export class CanvasRenderer {
@@ -185,12 +192,25 @@ export class CanvasRenderer {
       const numX = gutterW - cfg.padding - ctx.measureText(lineNum).width;
       ctx.fillText(lineNum, numX, y + cfg.lineHeight / 2);
 
-      // Text content
-      ctx.fillStyle = cfg.fgColor;
+      // Text content (with syntax highlighting if available)
       const textX = gutterW + cfg.padding;
       const textY = y + cfg.lineHeight / 2;
-      const displayText = this.expandTabs(state.lines[i] ?? "");
-      ctx.fillText(displayText, textX, textY);
+
+      if (state.lineTokens && state.lineTokens[i]) {
+        // Render with syntax colors
+        let x = textX;
+        for (const span of state.lineTokens[i]) {
+          const text = this.expandTabs(span.text);
+          ctx.fillStyle = span.color;
+          ctx.fillText(text, x, textY);
+          x += ctx.measureText(text).width;
+        }
+      } else {
+        // Plain text fallback
+        ctx.fillStyle = cfg.fgColor;
+        const displayText = this.expandTabs(state.lines[i] ?? "");
+        ctx.fillText(displayText, textX, textY);
+      }
     }
 
     // Gutter separator
