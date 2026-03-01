@@ -52,12 +52,16 @@
   --git-modified: #89b4fa;
   --git-deleted: #f38ba8;
 
-  /* Brand */
+  /* Brand — たたら製鉄モチーフ */
+  --flame: #f38ba8;       /* 炎 */
+  --tamahagane: #89b4fa;  /* 玉鋼 */
+  --charcoal: #1e1e2e;    /* 炭 */
   --brand-primary: #f38ba8;
   --brand-secondary: #fab387;
   --brand-accent: #89b4fa;
 
   /* Font */
+  --font-heading: "Cinzel", serif;
   --font-code: "JetBrains Mono", "Noto Sans JP", monospace;
   --font-ui: "Noto Sans JP", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-size: 15px;

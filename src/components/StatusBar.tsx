@@ -1,5 +1,4 @@
 // ⚒️ Status Bar — Bottom bar showing editor state
-// Design: 📂 main │ UTF-8 │ LF │ PHP 8.3 │ Laravel 12 │ 🟢 Sail Up │ L:42
 
 interface StatusBarProps {
   branch: string;
@@ -7,6 +6,8 @@ interface StatusBarProps {
   lineEnding: string;
   line: number;
   column: number;
+  language?: string;
+  framework?: string | null;
   onToggleTerminal: () => void;
 }
 
@@ -16,6 +17,8 @@ export function StatusBar({
   lineEnding,
   line,
   column,
+  language,
+  framework,
   onToggleTerminal,
 }: StatusBarProps) {
   return (
@@ -36,14 +39,22 @@ export function StatusBar({
         <span title="Git ブランチ" style={{ cursor: "pointer" }}>
           🌿 {branch}
         </span>
+        {framework && (
+          <span style={{ color: "var(--flame)" }}>
+            🔥 {framework}
+          </span>
+        )}
       </div>
 
       {/* Right side */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span>{encoding}</span>
         <span>{lineEnding}</span>
-        <span>
-          行 {line}, 列 {column}
+        {language && language !== "plaintext" && (
+          <span style={{ textTransform: "capitalize" }}>{language}</span>
+        )}
+        <span style={{ fontFamily: "var(--font-code)" }}>
+          Ln {line}, Col {column}
         </span>
         <button
           onClick={onToggleTerminal}
