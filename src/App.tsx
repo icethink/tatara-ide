@@ -4,7 +4,7 @@ import { EditorCanvas } from "./components/EditorCanvas";
 import { StatusBar } from "./components/StatusBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { TabBar } from "./components/TabBar";
-import { TerminalPanel } from "./components/TerminalPanel";
+import { XTerminal } from "./components/XTerminal";
 import { CommandPalette } from "./components/CommandPalette";
 import { QuickOpen } from "./components/QuickOpen";
 import { useKeybindings } from "./hooks/useKeybindings";
@@ -261,7 +261,7 @@ function App() {
                 display: "flex",
                 flexDirection: "column",
               }}>
-                <TerminalPanel projectPath={projectPath} />
+                <XTerminal projectPath={projectPath} visible={terminalVisible} />
               </div>
             )}
           </div>

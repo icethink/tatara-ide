@@ -10,12 +10,18 @@ mod filesystem;
 mod git;
 mod i18n;
 mod profile;
+mod pty;
 mod search;
 mod settings;
 mod terminal;
 mod theme;
 
 use std::path::Path;
+use std::sync::Arc;
+
+// Global PTY manager (shared across IPC commands)
+static PTY_MANAGER: std::sync::LazyLock<pty::PtyManager> =
+    std::sync::LazyLock::new(pty::PtyManager::new);
 
 // ── Tauri IPC Commands ──
 
@@ -157,10 +163,45 @@ fn normalize_path(path: String) -> String {
     filesystem::normalize_path(&path)
 }
 
-/// Execute a shell command
+/// Execute a shell command (non-interactive, one-shot)
 #[tauri::command]
 fn exec_command(cmd: String, cwd: Option<String>) -> terminal::ExecResult {
     terminal::exec_command(&cmd, cwd.as_deref())
+}
+
+/// Spawn a new PTY session (interactive shell)
+#[tauri::command]
+fn pty_spawn(
+    cwd: Option<String>,
+    rows: Option<u16>,
+    cols: Option<u16>,
+    app_handle: tauri::AppHandle,
+) -> Result<u32, String> {
+    PTY_MANAGER.spawn(cwd, rows.unwrap_or(24), cols.unwrap_or(80), app_handle)
+}
+
+/// Write data to PTY (keystrokes, text)
+#[tauri::command]
+fn pty_write(session_id: u32, data: String) -> Result<(), String> {
+    PTY_MANAGER.write(session_id, data.as_bytes())
+}
+
+/// Resize PTY terminal
+#[tauri::command]
+fn pty_resize(session_id: u32, rows: u16, cols: u16) -> Result<(), String> {
+    PTY_MANAGER.resize(session_id, rows, cols)
+}
+
+/// Kill a PTY session
+#[tauri::command]
+fn pty_kill(session_id: u32) -> Result<(), String> {
+    PTY_MANAGER.kill(session_id)
+}
+
+/// List active PTY sessions
+#[tauri::command]
+fn pty_list() -> Vec<u32> {
+    PTY_MANAGER.list_sessions()
 }
 
 /// Detect file encoding
@@ -232,6 +273,11 @@ pub fn run() {
             detect_encoding,
             normalize_path,
             exec_command,
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill,
+            pty_list,
         ])
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
