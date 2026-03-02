@@ -272,11 +272,63 @@ fn translate(key: String, locale: Option<String>) -> String {
     i18n.t(&key)
 }
 
+fn get_log_path() -> std::path::PathBuf {
+    // Write log next to the exe, or to LOCALAPPDATA, or to Desktop
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            return dir.join("tatara-debug.log");
+        }
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        return std::path::PathBuf::from(local).join("tatara-debug.log");
+    }
+    std::path::PathBuf::from("tatara-debug.log")
+}
+
+fn log_msg(msg: &str) {
+    use std::io::Write;
+    let path = get_log_path();
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let _ = writeln!(f, "[{}] {}", now, msg);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_fs::init())
+    // Panic handler — write to log file
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("PANIC: {}", info);
+        log_msg(&msg);
+        // Also try a message box
+        #[cfg(target_os = "windows")]
+        {
+            use std::ffi::CString;
+            let text = CString::new(msg.clone()).unwrap_or_default();
+            let title = CString::new("Tatara IDE - Crash").unwrap_or_default();
+            unsafe {
+                extern "system" {
+                    fn MessageBoxA(hwnd: *mut std::ffi::c_void, text: *const i8, caption: *const i8, utype: u32) -> i32;
+                }
+                MessageBoxA(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10);
+            }
+        }
+    }));
+
+    log_msg("=== Tatara IDE starting ===");
+    log_msg(&format!("exe: {:?}", std::env::current_exe()));
+    log_msg(&format!("cwd: {:?}", std::env::current_dir()));
+    log_msg(&format!("args: {:?}", std::env::args().collect::<Vec<_>>()));
+
+    log_msg("Initializing Tauri builder...");
+
+    let builder_result = std::panic::catch_unwind(|| {
+        tauri::Builder::default()
+            .plugin(tauri_plugin_shell::init())
+            .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             read_directory,
             read_file,
@@ -315,4 +367,25 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
         .expect("error while running Tatara IDE");
+    });
+
+    match builder_result {
+        Ok(_) => log_msg("Tauri exited normally"),
+        Err(e) => {
+            let msg = format!("Tauri panicked: {:?}", e);
+            log_msg(&msg);
+            #[cfg(target_os = "windows")]
+            {
+                use std::ffi::CString;
+                let text = CString::new(msg).unwrap_or_default();
+                let title = CString::new("Tatara IDE - Error").unwrap_or_default();
+                unsafe {
+                    extern "system" {
+                        fn MessageBoxA(hwnd: *mut std::ffi::c_void, text: *const i8, caption: *const i8, utype: u32) -> i32;
+                    }
+                    MessageBoxA(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10);
+                }
+            }
+        }
+    }
 }

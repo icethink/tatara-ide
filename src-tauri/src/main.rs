@@ -1,6 +1,8 @@
-// Prevents additional console window on Windows in release
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Debug: keep console visible to see errors
+// TODO: re-enable for production: #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    tatara_ide_lib::run()
+    eprintln!("[Tatara IDE] Starting...");
+    tatara_ide_lib::run();
+    eprintln!("[Tatara IDE] Exited.");
 }
