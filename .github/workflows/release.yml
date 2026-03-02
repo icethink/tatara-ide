@@ -18,10 +18,6 @@ jobs:
           - platform: windows-latest
             args: ""
             target: ""
-          # - platform: macos-latest
-          #   args: "--target universal-apple-darwin"
-          # - platform: ubuntu-22.04
-          #   args: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -41,12 +37,6 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
       - name: Install frontend dependencies
         run: npm install
 
@@ -59,35 +49,48 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "Tatara IDE ${{ github.ref_name }}"
           releaseBody: |
-            ## ⚒️ Tatara IDE ${{ github.ref_name }} — Alpha Release
+            ## ⚒️ Tatara IDE ${{ github.ref_name }}
 
-            **コードを、鍛える。**
+            **コードを、鍛える。** Laravel初心者のための軽量IDE。
 
-            Laravel初心者のための軽量IDE。Rust + Tauri で鍛えた高速エディタ。
+            ### 📦 ダウンロード
+            - **`Tatara.IDE-portable.zip`** — 展開してそのまま実行（おすすめ）
+            - `Tatara.IDE_*-setup.exe` — NSISインストーラー
+            - `Tatara.IDE_*_en-US.msi` — MSIインストーラー
 
-            ### ✨ Features
-            - Canvas ベースの高速テキストエディタ
-            - PHP/JavaScript/TypeScript/Rust/HTML/CSS シンタックスハイライト
-            - Laravel フレームワーク自動検出 & Artisan コマンド統合
-            - Git 統合（ステータス/差分/コミット/ステージ）
-            - .env パーサー & データベース設定自動検出
-            - ターミナル（危険コマンド検出 & RAW モード自動切替）
-            - コマンドパレット (Ctrl+Shift+P) & クイックオープン (Ctrl+P)
-            - 検索置換 (Ctrl+F/H) & プロジェクト全体検索
-            - ミニマップ & ブレッドクラム
-            - Shift-JIS/EUC-JP エンコーディング自動検出
-            - 8 ビルトインテーマ（Midnight デフォルト）
-            - 日本語 UI（英語切替可）
-
-            ### ⚠️ Alpha 注意事項
-            - ターミナルの PTY 接続は未実装（UI のみ）
-            - tree-sitter は未統合（正規表現ベースのハイライト）
-            - 一部機能は開発中です
-
-            ### 📊 Stats
-            - 12 Rust modules / 57 tests / 25 IPC commands
-            - 17 React components / 4 hooks / 3 libraries
-            - Build: ~250KB gzip
+            ⚠️ **WebView2 ランタイム** が必要です（Edge入ってればOK、なければ↓）
+            https://go.microsoft.com/fwlink/p/?LinkId=2124703
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
+
+      # Create portable zip from the built exe
+      - name: Create portable zip (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exePath = Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" | Where-Object { $_.Name -notlike "*setup*" -and $_.Name -notlike "*.msi" } | Select-Object -First 1
+          Write-Host "Found exe: $($exePath.FullName)"
+          
+          $zipDir = "portable-build"
+          New-Item -ItemType Directory -Force -Path $zipDir
+          Copy-Item $exePath.FullName "$zipDir/"
+          
+          # Also copy any required DLLs and WebView2Loader
+          $releaseDir = "src-tauri/target/release"
+          Get-ChildItem -Path $releaseDir -Filter "*.dll" -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item $_.FullName "$zipDir/"
+          }
+          
+          Compress-Archive -Path "$zipDir/*" -DestinationPath "Tatara.IDE-portable.zip" -Force
+          Write-Host "Created portable zip"
+          Get-ChildItem "Tatara.IDE-portable.zip"
+
+      - name: Upload portable zip
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release upload $tag "Tatara.IDE-portable.zip" --clobber
