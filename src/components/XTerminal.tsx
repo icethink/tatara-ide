@@ -1,12 +1,14 @@
 // ⚒️ XTerminal — Real interactive terminal with PTY
 //
 // Uses xterm.js for terminal emulation + Tauri PTY backend.
-// Supports: vim, ssh, tmux, artisan tinker, and all interactive CLI tools.
+// Supports: vim, ssh, tmux, claude code, artisan tinker, and ALL interactive CLIs.
+// Features: Multiple tabs, Unicode 11, Catppuccin theme, auto-resize.
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 
 interface XTerminalProps {
@@ -14,7 +16,7 @@ interface XTerminalProps {
   visible?: boolean;
 }
 
-// Catppuccin Mocha theme for xterm
+// Catppuccin Mocha theme
 const CATPPUCCIN_THEME = {
   background: "#1e1e2e",
   foreground: "#cdd6f4",
@@ -40,19 +42,29 @@ const CATPPUCCIN_THEME = {
   brightWhite: "#a6adc8",
 };
 
+interface TermTab {
+  id: number;
+  label: string;
+  terminal: Terminal;
+  fitAddon: FitAddon;
+  sessionId: number | null;
+  connected: boolean;
+  cleanup: (() => void) | null;
+}
+
+let nextTabId = 1;
+
 export function XTerminal({ projectPath, visible = true }: XTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  const sessionIdRef = useRef<number | null>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<TermTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<number | null>(null);
+  const tabsRef = useRef<TermTab[]>([]);
+  tabsRef.current = tabs;
 
-  // Initialize xterm.js
-  useEffect(() => {
-    if (!containerRef.current || terminalRef.current) return;
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
+  // Create a new terminal tab
+  const createTab = useCallback((label?: string) => {
     const terminal = new Terminal({
       theme: CATPPUCCIN_THEME,
       fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace",
@@ -60,82 +72,62 @@ export function XTerminal({ projectPath, visible = true }: XTerminalProps) {
       lineHeight: 1.4,
       cursorBlink: true,
       cursorStyle: "bar",
-      scrollback: 5000,
+      scrollback: 10000,
       allowTransparency: true,
-      convertEol: true,
+      convertEol: false,
     });
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
+    const unicode11Addon = new Unicode11Addon();
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(webLinksAddon);
-    terminal.open(containerRef.current);
+    terminal.loadAddon(unicode11Addon);
+    terminal.unicode.activeVersion = "11";
 
-    // Initial fit
-    setTimeout(() => fitAddon.fit(), 50);
-
-    terminalRef.current = terminal;
-    fitAddonRef.current = fitAddon;
-
-    return () => {
-      if (cleanupRef.current) cleanupRef.current();
-      terminal.dispose();
-      terminalRef.current = null;
-      fitAddonRef.current = null;
+    const id = nextTabId++;
+    const tab: TermTab = {
+      id,
+      label: label || `ターミナル ${id}`,
+      terminal,
+      fitAddon,
+      sessionId: null,
+      connected: false,
+      cleanup: null,
     };
+
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(id);
+
+    return tab;
   }, []);
 
-  // Handle resize
-  useEffect(() => {
-    if (!visible) return;
+  // Connect a tab to PTY
+  const connectTab = useCallback(async (tab: TermTab) => {
+    if (!containerRef.current) return;
 
-    const handleResize = () => {
-      if (fitAddonRef.current && terminalRef.current) {
-        try {
-          fitAddonRef.current.fit();
-          // Notify PTY backend of new size
-          if (sessionIdRef.current !== null) {
-            const { cols, rows } = terminalRef.current;
-            resizePty(sessionIdRef.current, rows, cols);
-          }
-        } catch {}
-      }
-    };
-
-    // Fit when becoming visible
-    setTimeout(handleResize, 50);
-
-    const observer = new ResizeObserver(handleResize);
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [visible]);
-
-  // Connect to PTY backend
-  const connectPty = useCallback(async () => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
+    // Mount terminal to DOM
+    const el = containerRef.current;
+    el.innerHTML = "";
+    tab.terminal.open(el);
+    setTimeout(() => tab.fitAddon.fit(), 50);
 
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const { listen } = await import("@tauri-apps/api/event");
 
-      // Get terminal dimensions
-      const { cols, rows } = terminal;
+      const { cols, rows } = tab.terminal;
 
-      // Spawn PTY
       const sessionId = await invoke<number>("pty_spawn", {
         cwd: projectPath || undefined,
         rows,
         cols,
       });
 
-      sessionIdRef.current = sessionId;
-      setConnected(true);
-      setError(null);
+      tab.sessionId = sessionId;
+      tab.connected = true;
+      setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, sessionId, connected: true } : t)));
 
       // Listen for PTY output
       const unlisten = await listen<{ session_id: number; data: string; exited: boolean }>(
@@ -144,65 +136,125 @@ export function XTerminal({ projectPath, visible = true }: XTerminalProps) {
           if (event.payload.session_id !== sessionId) return;
 
           if (event.payload.exited) {
-            terminal.writeln("\r\n\x1b[90m[プロセスが終了しました]\x1b[0m");
-            setConnected(false);
-            sessionIdRef.current = null;
+            tab.terminal.writeln("\r\n\x1b[90m[プロセスが終了しました — Enter で再接続]\x1b[0m");
+            tab.connected = false;
+            tab.sessionId = null;
+            setTabs((prev) => prev.map((t) => (t.id === tab.id ? { ...t, connected: false, sessionId: null } : t)));
           } else {
-            terminal.write(event.payload.data);
+            tab.terminal.write(event.payload.data);
           }
         }
       );
 
-      // Forward keyboard input to PTY
-      const onData = terminal.onData((data: string) => {
-        if (sessionIdRef.current !== null) {
-          invoke("pty_write", { sessionId: sessionIdRef.current, data }).catch(() => {});
+      // Forward input to PTY
+      const onData = tab.terminal.onData((data: string) => {
+        if (tab.sessionId !== null) {
+          invoke("pty_write", { sessionId: tab.sessionId, data }).catch(() => {});
+        } else if (data === "\r") {
+          // Enter on dead session → reconnect
+          connectTab(tab);
         }
       });
 
-      // Handle binary data (special keys)
-      const onBinary = terminal.onBinary((data: string) => {
-        if (sessionIdRef.current !== null) {
-          invoke("pty_write", { sessionId: sessionIdRef.current, data }).catch(() => {});
+      const onBinary = tab.terminal.onBinary((data: string) => {
+        if (tab.sessionId !== null) {
+          invoke("pty_write", { sessionId: tab.sessionId, data }).catch(() => {});
         }
       });
 
-      // Store cleanup refs for unmount
-      cleanupRef.current = () => {
+      tab.cleanup = () => {
         unlisten();
         onData.dispose();
         onBinary.dispose();
-        if (sessionIdRef.current !== null) {
-          invoke("pty_kill", { sessionId: sessionIdRef.current }).catch(() => {});
-          sessionIdRef.current = null;
+        if (tab.sessionId !== null) {
+          invoke("pty_kill", { sessionId: tab.sessionId }).catch(() => {});
         }
       };
     } catch (err) {
-      // Not in Tauri — show fallback message
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      terminal.writeln("\x1b[33m⚒️ Tatara Terminal\x1b[0m");
-      terminal.writeln(`\x1b[31mPTY接続エラー: ${msg}\x1b[0m`);
-      terminal.writeln("\x1b[90m(ブラウザ開発モードではPTYは使えません)\x1b[0m");
+      tab.terminal.writeln("\x1b[33m⚒️ Tatara Terminal\x1b[0m");
+      tab.terminal.writeln(`\x1b[31mPTY接続エラー: ${msg}\x1b[0m`);
     }
   }, [projectPath]);
 
-  // Auto-connect on mount
+  // Auto-create first tab
   useEffect(() => {
-    if (!connected && terminalRef.current && !error) {
-      connectPty();
+    if (tabs.length === 0 && visible) {
+      const tab = createTab();
+      // Defer connection to next tick so container is mounted
+      setTimeout(() => connectTab(tab), 100);
     }
-  }, [connectPty, connected, error]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reconnect button
-  const handleReconnect = useCallback(() => {
-    if (terminalRef.current) {
-      terminalRef.current.clear();
-      setError(null);
-      setConnected(false);
-      connectPty();
+  // Switch active tab → mount its terminal
+  useEffect(() => {
+    if (!containerRef.current || !activeTab) return;
+    const el = containerRef.current;
+    el.innerHTML = "";
+    activeTab.terminal.open(el);
+    setTimeout(() => {
+      activeTab.fitAddon.fit();
+      activeTab.terminal.focus();
+    }, 50);
+  }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resize handler
+  useEffect(() => {
+    if (!visible || !activeTab) return;
+
+    const handleResize = () => {
+      if (activeTab) {
+        try {
+          activeTab.fitAddon.fit();
+          if (activeTab.sessionId !== null) {
+            const { cols, rows } = activeTab.terminal;
+            resizePty(activeTab.sessionId, rows, cols);
+          }
+        } catch {}
+      }
+    };
+
+    setTimeout(handleResize, 50);
+
+    const observer = new ResizeObserver(handleResize);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [visible, activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close tab
+  const closeTab = useCallback((id: number) => {
+    const tab = tabsRef.current.find((t) => t.id === id);
+    if (tab) {
+      if (tab.cleanup) tab.cleanup();
+      tab.terminal.dispose();
     }
-  }, [connectPty]);
+
+    setTabs((prev) => {
+      const remaining = prev.filter((t) => t.id !== id);
+      if (remaining.length === 0) {
+        setActiveTabId(null);
+      } else if (activeTabId === id) {
+        setActiveTabId(remaining[remaining.length - 1].id);
+      }
+      return remaining;
+    });
+  }, [activeTabId]);
+
+  // New tab + connect
+  const addTab = useCallback((label?: string) => {
+    const tab = createTab(label);
+    setTimeout(() => connectTab(tab), 100);
+  }, [createTab, connectTab]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      tabsRef.current.forEach((tab) => {
+        if (tab.cleanup) tab.cleanup();
+        tab.terminal.dispose();
+      });
+    };
+  }, []);
 
   if (!visible) return null;
 
@@ -214,67 +266,97 @@ export function XTerminal({ projectPath, visible = true }: XTerminalProps) {
       background: "#1e1e2e",
       minHeight: 0,
     }}>
-      {/* Header */}
+      {/* Tab bar */}
       <div style={{
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
-        padding: "3px 12px",
+        padding: "0 4px",
         borderBottom: "1px solid #313244",
         fontSize: 11,
         color: "#6c7086",
         userSelect: "none",
         flexShrink: 0,
+        height: 28,
+        gap: 0,
       }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span>💻 ターミナル</span>
-          <span style={{
-            padding: "1px 6px",
-            borderRadius: 3,
-            fontSize: 10,
-            fontWeight: 600,
-            background: connected ? "rgba(166, 227, 161, 0.2)" : "rgba(243, 139, 168, 0.2)",
-            color: connected ? "#a6e3a1" : "#f38ba8",
-          }}>
-            {connected ? "接続中" : "未接続"}
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {!connected && (
-            <button
-              onClick={handleReconnect}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#89b4fa",
-                cursor: "pointer",
-                fontSize: 11,
-              }}
-            >
-              🔄 再接続
-            </button>
-          )}
-          <button
-            onClick={() => {
-              if (sessionIdRef.current !== null) {
-                import("@tauri-apps/api/core").then(({ invoke }) => {
-                  invoke("pty_kill", { sessionId: sessionIdRef.current }).catch(() => {});
-                });
-                sessionIdRef.current = null;
-                setConnected(false);
-              }
-            }}
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            onClick={() => setActiveTabId(tab.id)}
             style={{
-              background: "none",
-              border: "none",
-              color: "#6c7086",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "0 10px",
+              height: "100%",
               cursor: "pointer",
-              fontSize: 11,
+              borderBottom: tab.id === activeTabId ? "2px solid #89b4fa" : "2px solid transparent",
+              color: tab.id === activeTabId ? "#cdd6f4" : "#6c7086",
+              background: tab.id === activeTabId ? "rgba(137, 180, 250, 0.05)" : "transparent",
             }}
           >
-            ✕ 終了
-          </button>
-        </div>
+            <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: tab.connected ? "#a6e3a1" : "#f38ba8",
+              flexShrink: 0,
+            }} />
+            <span>{tab.label}</span>
+            <span
+              onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+              style={{
+                cursor: "pointer",
+                opacity: 0.5,
+                padding: "0 2px",
+                fontSize: 13,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+            >
+              ×
+            </span>
+          </div>
+        ))}
+
+        {/* New tab button */}
+        <button
+          onClick={() => addTab()}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#6c7086",
+            cursor: "pointer",
+            fontSize: 15,
+            padding: "0 8px",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+          }}
+          title="新しいターミナル"
+        >
+          +
+        </button>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Quick launch */}
+        <button
+          onClick={() => addTab("claude")}
+          style={{
+            background: "rgba(203, 166, 247, 0.1)",
+            border: "1px solid rgba(203, 166, 247, 0.2)",
+            borderRadius: 3,
+            color: "#cba6f7",
+            cursor: "pointer",
+            fontSize: 10,
+            padding: "2px 8px",
+            marginRight: 4,
+          }}
+          title="Claude Code ターミナルを開く"
+        >
+          ✦ Claude
+        </button>
       </div>
 
       {/* Terminal container */}
@@ -291,7 +373,7 @@ export function XTerminal({ projectPath, visible = true }: XTerminalProps) {
   );
 }
 
-// ── Helper functions ──
+// ── Helper ──
 
 async function resizePty(sessionId: number, rows: number, cols: number) {
   try {

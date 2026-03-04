@@ -63,15 +63,22 @@ impl PtyManager {
             })
             .map_err(|e| format!("PTY作成エラー: {}", e))?;
 
-        // Build shell command
+        // Build shell command — inherit all system env vars
         let mut cmd = CommandBuilder::new_default_prog();
         if let Some(dir) = &cwd {
             cmd.cwd(dir);
         }
 
-        // Set common env vars
+        // Inherit ALL environment variables from parent process
+        // Critical for: PATH (find node/claude/git), HOME, USER, etc.
+        for (key, val) in std::env::vars() {
+            cmd.env(key, val);
+        }
+
+        // Override/set terminal env vars
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env("LANG", "en_US.UTF-8"); // Unicode support for TUI apps
 
         let child = pair
             .slave
