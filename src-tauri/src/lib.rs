@@ -10,6 +10,7 @@ mod filesystem;
 mod git;
 mod i18n;
 mod profile;
+mod lsp;
 mod pty;
 mod search;
 mod settings;
@@ -22,6 +23,9 @@ use std::sync::Arc;
 // Global PTY manager (shared across IPC commands)
 static PTY_MANAGER: std::sync::LazyLock<pty::PtyManager> =
     std::sync::LazyLock::new(pty::PtyManager::new);
+
+static LSP_MANAGER: std::sync::LazyLock<lsp::LspManager> =
+    std::sync::LazyLock::new(lsp::LspManager::new);
 
 // ── Tauri IPC Commands ──
 
@@ -236,6 +240,164 @@ fn pty_list() -> Vec<u32> {
     PTY_MANAGER.list_sessions()
 }
 
+// ── LSP Commands ──
+
+/// Start an LSP server
+#[tauri::command]
+fn lsp_start(
+    server_id: String,
+    command: String,
+    args: Vec<String>,
+    languages: Vec<String>,
+    root_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let root_uri = lsp::path_to_uri(&root_path);
+    LSP_MANAGER.start_server(
+        lsp::LspServerConfig { id: server_id, command, args, languages, root_uri },
+        app_handle,
+    )
+}
+
+/// Stop an LSP server
+#[tauri::command]
+fn lsp_stop(server_id: String) -> Result<(), String> {
+    LSP_MANAGER.stop_server(&server_id)
+}
+
+/// List active LSP servers
+#[tauri::command]
+fn lsp_list() -> Vec<String> {
+    LSP_MANAGER.list_servers()
+}
+
+/// Notify LSP that a file was opened
+#[tauri::command]
+fn lsp_did_open(path: String, language: String, version: i32, text: String) -> Result<(), String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.did_open(&server_id, &uri, &language, version, &text)
+}
+
+/// Notify LSP that a file was changed
+#[tauri::command]
+fn lsp_did_change(path: String, language: String, version: i32, text: String) -> Result<(), String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.did_change(&server_id, &uri, version, &text)
+}
+
+/// Notify LSP that a file was saved
+#[tauri::command]
+fn lsp_did_save(path: String, language: String, text: String) -> Result<(), String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.did_save(&server_id, &uri, &text)
+}
+
+/// Request completions
+#[tauri::command]
+fn lsp_completion(path: String, language: String, line: u32, character: u32) -> Result<Vec<lsp::CompletionItem>, String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.completion(&server_id, &uri, line, character)
+}
+
+/// Request hover info
+#[tauri::command]
+fn lsp_hover(path: String, language: String, line: u32, character: u32) -> Result<Option<lsp::HoverResult>, String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.hover(&server_id, &uri, line, character)
+}
+
+/// Go to definition
+#[tauri::command]
+fn lsp_definition(path: String, language: String, line: u32, character: u32) -> Result<Vec<lsp::Location>, String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.definition(&server_id, &uri, line, character)
+}
+
+/// Find all references
+#[tauri::command]
+fn lsp_references(path: String, language: String, line: u32, character: u32) -> Result<Vec<lsp::Location>, String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.references(&server_id, &uri, line, character)
+}
+
+/// Format document
+#[tauri::command]
+fn lsp_format(path: String, language: String, tab_size: u32, insert_spaces: bool) -> Result<Vec<lsp::TextEdit>, String> {
+    let server_id = LSP_MANAGER.server_for_language(&language)
+        .ok_or_else(|| format!("{} 用のLSPサーバーがありません", language))?;
+    let uri = lsp::path_to_uri(&path);
+    LSP_MANAGER.format(&server_id, &uri, tab_size, insert_spaces)
+}
+
+/// Detect and auto-start appropriate LSP servers for a project
+#[tauri::command]
+fn lsp_auto_detect(root_path: String, app_handle: tauri::AppHandle) -> Result<Vec<String>, String> {
+    let root = std::path::Path::new(&root_path);
+    let mut started = Vec::new();
+
+    // Check for PHP (composer.json or .php files)
+    if root.join("composer.json").exists() || root.join("artisan").exists() {
+        let config = lsp::LspServerConfig {
+            id: "intelephense".to_string(),
+            command: "intelephense".to_string(),
+            args: vec!["--stdio".to_string()],
+            languages: vec!["php".to_string(), "blade".to_string()],
+            root_uri: lsp::path_to_uri(&root_path),
+        };
+        if LSP_MANAGER.start_server(config, app_handle.clone()).is_ok() {
+            started.push("intelephense".to_string());
+        }
+    }
+
+    // Check for JS/TS (package.json or tsconfig.json)
+    if root.join("package.json").exists() || root.join("tsconfig.json").exists() {
+        let config = lsp::LspServerConfig {
+            id: "typescript".to_string(),
+            command: "typescript-language-server".to_string(),
+            args: vec!["--stdio".to_string()],
+            languages: vec!["javascript".to_string(), "typescript".to_string()],
+            root_uri: lsp::path_to_uri(&root_path),
+        };
+        if LSP_MANAGER.start_server(config, app_handle.clone()).is_ok() {
+            started.push("typescript".to_string());
+        }
+    }
+
+    // Check for Vue
+    if root.join("package.json").exists() {
+        if let Ok(pkg) = std::fs::read_to_string(root.join("package.json")) {
+            if pkg.contains("\"vue\"") {
+                let config = lsp::LspServerConfig {
+                    id: "volar".to_string(),
+                    command: "vue-language-server".to_string(),
+                    args: vec!["--stdio".to_string()],
+                    languages: vec!["vue".to_string()],
+                    root_uri: lsp::path_to_uri(&root_path),
+                };
+                if LSP_MANAGER.start_server(config, app_handle.clone()).is_ok() {
+                    started.push("volar".to_string());
+                }
+            }
+        }
+    }
+
+    Ok(started)
+}
+
 /// Detect file encoding
 #[tauri::command]
 fn detect_encoding(bytes: Vec<u8>) -> String {
@@ -363,6 +525,18 @@ pub fn run() {
             pty_resize,
             pty_kill,
             pty_list,
+            lsp_start,
+            lsp_stop,
+            lsp_list,
+            lsp_did_open,
+            lsp_did_change,
+            lsp_did_save,
+            lsp_completion,
+            lsp_hover,
+            lsp_definition,
+            lsp_references,
+            lsp_format,
+            lsp_auto_detect,
         ])
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
