@@ -240,6 +240,48 @@ fn pty_list() -> Vec<u32> {
     PTY_MANAGER.list_sessions()
 }
 
+// ── File Operations ──
+
+/// Create a new file
+#[tauri::command]
+fn create_file(path: String, content: Option<String>) -> Result<(), String> {
+    let resolved = filesystem::resolve_project_path(&path);
+    if let Some(parent) = std::path::Path::new(&resolved).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&resolved, content.unwrap_or_default())
+        .map_err(|e| format!("ファイル作成エラー: {}", e))
+}
+
+/// Create a new directory
+#[tauri::command]
+fn create_directory(path: String) -> Result<(), String> {
+    let resolved = filesystem::resolve_project_path(&path);
+    std::fs::create_dir_all(&resolved)
+        .map_err(|e| format!("フォルダ作成エラー: {}", e))
+}
+
+/// Delete a file or directory
+#[tauri::command]
+fn delete_path(path: String) -> Result<(), String> {
+    let resolved = filesystem::resolve_project_path(&path);
+    let p = std::path::Path::new(&resolved);
+    if p.is_dir() {
+        std::fs::remove_dir_all(p).map_err(|e| format!("削除エラー: {}", e))
+    } else {
+        std::fs::remove_file(p).map_err(|e| format!("削除エラー: {}", e))
+    }
+}
+
+/// Rename a file or directory
+#[tauri::command]
+fn rename_path(old_path: String, new_path: String) -> Result<(), String> {
+    let old = filesystem::resolve_project_path(&old_path);
+    let new = filesystem::resolve_project_path(&new_path);
+    std::fs::rename(&old, &new)
+        .map_err(|e| format!("リネームエラー: {}", e))
+}
+
 // ── LSP Commands ──
 
 /// Start an LSP server
@@ -537,6 +579,10 @@ pub fn run() {
             lsp_references,
             lsp_format,
             lsp_auto_detect,
+            create_file,
+            create_directory,
+            delete_path,
+            rename_path,
         ])
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())
