@@ -11,6 +11,7 @@ mod git;
 mod i18n;
 mod profile;
 mod lsp;
+mod lsp_installer;
 mod pty;
 mod search;
 mod settings;
@@ -191,6 +192,27 @@ fn read_file_raw(path: String) -> Result<serde_json::Value, String> {
         "mime": mime,
         "size": bytes.len(),
     }))
+}
+
+/// Get LSP server installation status
+#[tauri::command]
+fn lsp_server_status() -> Vec<lsp_installer::ServerStatus> {
+    lsp_installer::get_status()
+}
+
+/// Install LSP servers needed for a project (auto-detect)
+#[tauri::command]
+fn lsp_install_for_project(project_path: String) -> Vec<(String, Result<String, String>)> {
+    lsp_installer::install_for_project(std::path::Path::new(&project_path))
+}
+
+/// Install a specific LSP server by ID
+#[tauri::command]
+fn lsp_install_server(server_id: String) -> Result<String, String> {
+    let servers = lsp_installer::builtin_servers();
+    let server = servers.iter().find(|s| s.id == server_id)
+        .ok_or_else(|| format!("サーバー {} は定義されていません", server_id))?;
+    lsp_installer::install_server(server)
 }
 
 /// Normalize a path (WSL \\wsl$ → /home/...)
@@ -385,59 +407,58 @@ fn lsp_format(path: String, language: String, tab_size: u32, insert_spaces: bool
     LSP_MANAGER.format(&server_id, &uri, tab_size, insert_spaces)
 }
 
-/// Detect and auto-start appropriate LSP servers for a project
+/// Detect, auto-install, and start appropriate LSP servers for a project
 #[tauri::command]
 fn lsp_auto_detect(root_path: String, app_handle: tauri::AppHandle) -> Result<Vec<String>, String> {
     let root = std::path::Path::new(&root_path);
+    let needed = lsp_installer::detect_needed_servers(root);
     let mut started = Vec::new();
 
-    // Check for PHP (composer.json or .php files)
-    if root.join("composer.json").exists() || root.join("artisan").exists() {
-        let config = lsp::LspServerConfig {
-            id: "intelephense".to_string(),
-            command: "intelephense".to_string(),
-            args: vec!["--stdio".to_string()],
-            languages: vec!["php".to_string(), "blade".to_string()],
-            root_uri: lsp::path_to_uri(&root_path),
-        };
-        if LSP_MANAGER.start_server(config, app_handle.clone()).is_ok() {
-            started.push("intelephense".to_string());
-        }
-    }
+    let node = find_node_path().ok_or_else(|| {
+        "Node.js が見つかりません。LSP サーバーの起動に必要です。".to_string()
+    })?;
 
-    // Check for JS/TS (package.json or tsconfig.json)
-    if root.join("package.json").exists() || root.join("tsconfig.json").exists() {
-        let config = lsp::LspServerConfig {
-            id: "typescript".to_string(),
-            command: "typescript-language-server".to_string(),
-            args: vec!["--stdio".to_string()],
-            languages: vec!["javascript".to_string(), "typescript".to_string()],
-            root_uri: lsp::path_to_uri(&root_path),
-        };
-        if LSP_MANAGER.start_server(config, app_handle.clone()).is_ok() {
-            started.push("typescript".to_string());
+    for server_def in &needed {
+        // Auto-install if not present
+        if !lsp_installer::is_installed(server_def) {
+            log_msg(&format!("LSP: {} をインストール中...", server_def.name));
+            if let Err(e) = lsp_installer::install_server(server_def) {
+                log_msg(&format!("LSP: {} インストール失敗: {}", server_def.name, e));
+                continue;
+            }
         }
-    }
 
-    // Check for Vue
-    if root.join("package.json").exists() {
-        if let Ok(pkg) = std::fs::read_to_string(root.join("package.json")) {
-            if pkg.contains("\"vue\"") {
-                let config = lsp::LspServerConfig {
-                    id: "volar".to_string(),
-                    command: "vue-language-server".to_string(),
-                    args: vec!["--stdio".to_string()],
-                    languages: vec!["vue".to_string()],
-                    root_uri: lsp::path_to_uri(&root_path),
-                };
-                if LSP_MANAGER.start_server(config, app_handle.clone()).is_ok() {
-                    started.push("volar".to_string());
+        // Get command to run
+        if let Some((cmd, args)) = lsp_installer::server_command(server_def) {
+            let config = lsp::LspServerConfig {
+                id: server_def.id.clone(),
+                command: cmd,
+                args,
+                languages: server_def.languages.clone(),
+                root_uri: lsp::path_to_uri(&root_path),
+            };
+            match LSP_MANAGER.start_server(config, app_handle.clone()) {
+                Ok(_) => {
+                    log_msg(&format!("LSP: {} 起動成功", server_def.name));
+                    started.push(server_def.id.clone());
+                }
+                Err(e) => {
+                    log_msg(&format!("LSP: {} 起動失敗: {}", server_def.name, e));
                 }
             }
         }
     }
 
     Ok(started)
+}
+
+fn find_node_path() -> Option<String> {
+    for cmd in &["node", "node.exe"] {
+        if std::process::Command::new(cmd).arg("--version").output().is_ok() {
+            return Some(cmd.to_string());
+        }
+    }
+    None
 }
 
 /// Detect file encoding
@@ -579,6 +600,9 @@ pub fn run() {
             lsp_references,
             lsp_format,
             lsp_auto_detect,
+            lsp_server_status,
+            lsp_install_for_project,
+            lsp_install_server,
             create_file,
             create_directory,
             delete_path,
