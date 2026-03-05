@@ -15,6 +15,13 @@ import { GoToLine } from "./components/GoToLine";
 import { NotificationContainer, useNotifications } from "./components/Notifications";
 import { ImageViewer } from "./components/ImageViewer";
 import { MarkdownPreview } from "./components/MarkdownPreview";
+// Phase 2 components (ready, will wire incrementally)
+// import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+// import { HoverTooltip } from "./components/HoverTooltip";
+// import { SignatureHelp } from "./components/SignatureHelp";
+// import { FileContextMenu } from "./components/FileContextMenu";
+import { useLsp } from "./hooks/useLsp";
+import { useAutoSave } from "./hooks/useAutoSave";
 import type { FileNode } from "./components/FileTree";
 
 // ── Tauri IPC (graceful fallback for browser dev) ──
@@ -66,6 +73,19 @@ function App() {
   const [goToLineVisible, setGoToLineVisible] = useState(false);
 
   const editor = useEditorStore();
+  const lsp = useLsp(projectPath);
+
+  // Auto-save hook
+  const modifiedTabIds = editor.tabs.filter(t => t.modified).map(t => t.id);
+  const handleAutoSave = useCallback((tabId: string) => {
+    const tab = editor.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    invoke("write_file", { path: tab.path, content: tab.content }).then(() => {
+      editor.markTabSaved(tabId);
+    });
+  }, [editor]);
+
+  useAutoSave({ enabled: true, onSave: handleAutoSave, modifiedTabIds });
   const { notifications, notify, dismiss } = useNotifications();
 
   // ── Project / Folder Operations ──
@@ -103,10 +123,13 @@ function App() {
     const result = await invoke<{ content: string; encoding: string }>("read_file", { path });
     if (result) {
       editor.openFile(path, result.content, line);
+      // Notify LSP
+      const lang = detectLangForLsp(path);
+      if (lang) lsp.didOpen(path, lang, result.content);
     } else {
       editor.openFile(path, `// ${path}\n// (File content unavailable in browser mode)\n`, line);
     }
-  }, [editor]);
+  }, [editor, lsp]);
 
   const saveFile = useCallback(async () => {
     const tab = editor.activeTab;
@@ -116,8 +139,11 @@ function App() {
     if (success !== null) {
       editor.markTabSaved(tab.id);
       notify(`${tab.filename} を保存しました`, "success", { duration: 2000 });
+      // Notify LSP
+      const lang = detectLangForLsp(tab.path);
+      if (lang) lsp.didSave(tab.path, lang, tab.content);
     }
-  }, [editor, notify]);
+  }, [editor, notify, lsp]);
 
   // ── Project Detection ──
 
@@ -170,8 +196,49 @@ function App() {
         if (editor.activeTabId) editor.closeTab(editor.activeTabId);
       },
       "file.reopenClosed": () => editor.reopenClosedTab(),
+      "editor.goToDefinition": async () => {
+        const tab = editor.activeTab;
+        if (!tab) return;
+        const lang = detectLangForLsp(tab.path);
+        if (!lang) return;
+        const locations = await lsp.definition(tab.path, lang, tab.cursorLine, tab.cursorColumn);
+        if (locations.length > 0) {
+          openFile(locations[0].path, locations[0].line);
+        }
+      },
+      "editor.findReferences": async () => {
+        const tab = editor.activeTab;
+        if (!tab) return;
+        const lang = detectLangForLsp(tab.path);
+        if (!lang) return;
+        const refs = await lsp.references(tab.path, lang, tab.cursorLine, tab.cursorColumn);
+        if (refs.length > 0) {
+          // TODO: show references panel. For now, jump to first.
+          openFile(refs[0].path, refs[0].line);
+        }
+      },
+      "editor.format": async () => {
+        const tab = editor.activeTab;
+        if (!tab) return;
+        const lang = detectLangForLsp(tab.path);
+        if (!lang) return;
+        const edits = await lsp.format(tab.path, lang);
+        if (edits.length > 0) {
+          // Apply edits (simplified: replace full content with last edit)
+          let content = tab.content;
+          // Apply in reverse order to preserve positions
+          for (const edit of edits.reverse()) {
+            const lines = content.split("\n");
+            const startIdx = lines.slice(0, edit.range.start_line).join("\n").length + (edit.range.start_line > 0 ? 1 : 0) + edit.range.start_col;
+            const endIdx = lines.slice(0, edit.range.end_line).join("\n").length + (edit.range.end_line > 0 ? 1 : 0) + edit.range.end_col;
+            content = content.slice(0, startIdx) + edit.new_text + content.slice(endIdx);
+          }
+          editor.updateTabContent(tab.id, content);
+          notify("フォーマット完了", "success", { duration: 2000 });
+        }
+      },
     }),
-    [saveFile, editor],
+    [saveFile, editor, lsp, openFile, notify],
   );
 
   useKeybindings(handlers);
@@ -252,7 +319,11 @@ function App() {
                     language={activeTab.language}
                     cursorLine={activeTab.cursorLine}
                     cursorColumn={activeTab.cursorColumn}
-                    onContentChange={(content) => editor.updateTabContent(activeTab.id, content)}
+                    onContentChange={(content) => {
+                    editor.updateTabContent(activeTab.id, content);
+                    const lang = detectLangForLsp(activeTab.path);
+                    if (lang) lsp.didChange(activeTab.path, lang, content);
+                  }}
                     onCursorChange={(line, col) => editor.updateCursor(activeTab.id, line, col)}
                     onSave={saveFile}
                   />
@@ -293,6 +364,9 @@ function App() {
         language={activeTab?.language ?? "plaintext"}
         framework={framework}
         onToggleTerminal={() => setTerminalVisible(!terminalVisible)}
+        errors={lsp.diagnostics.filter(d => d.severity === "error").length}
+        warnings={lsp.diagnostics.filter(d => d.severity === "warning").length}
+        lspServers={lsp.servers}
       />
 
       {/* Overlays */}
@@ -470,6 +544,25 @@ function QuickAction({
       </span>
     </button>
   );
+}
+
+// ── Helpers ──
+
+function detectLangForLsp(path: string): string | null {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  if (path.endsWith(".blade.php")) return "blade";
+  const map: Record<string, string> = {
+    php: "php",
+    js: "javascript",
+    jsx: "javascriptreact",
+    ts: "typescript",
+    tsx: "typescriptreact",
+    vue: "vue",
+    css: "css",
+    scss: "scss",
+    less: "less",
+  };
+  return map[ext] || null;
 }
 
 export default App;
