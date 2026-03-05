@@ -12,6 +12,7 @@ interface StatusBarProps {
   errors?: number;
   warnings?: number;
   lspServers?: string[];
+  onDiagnosticsClick?: () => void;
 }
 
 export function StatusBar({
@@ -26,6 +27,7 @@ export function StatusBar({
   errors = 0,
   warnings = 0,
   lspServers = [],
+  onDiagnosticsClick,
 }: StatusBarProps) {
   return (
     <div className="status-bar" style={{
@@ -56,7 +58,7 @@ export function StatusBar({
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {/* Diagnostics count */}
         {(errors > 0 || warnings > 0) && (
-          <span style={{ display: "flex", gap: 6 }}>
+          <span style={{ display: "flex", gap: 6, cursor: "pointer" }} onClick={onDiagnosticsClick}>
             {errors > 0 && <span style={{ color: "#f38ba8" }}>⊘ {errors}</span>}
             {warnings > 0 && <span style={{ color: "#f9e2af" }}>⚠ {warnings}</span>}
           </span>

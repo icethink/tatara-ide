@@ -600,13 +600,13 @@ pub fn run() {
             lsp_references,
             lsp_format,
             lsp_auto_detect,
+            create_file,
+            create_directory,
+            rename_path,
+            delete_path,
             lsp_server_status,
             lsp_install_for_project,
             lsp_install_server,
-            create_file,
-            create_directory,
-            delete_path,
-            rename_path,
         ])
         .plugin(tauri_plugin_dialog::init())
         .run(tauri::generate_context!())

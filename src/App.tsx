@@ -15,11 +15,10 @@ import { GoToLine } from "./components/GoToLine";
 import { NotificationContainer, useNotifications } from "./components/Notifications";
 import { ImageViewer } from "./components/ImageViewer";
 import { MarkdownPreview } from "./components/MarkdownPreview";
-// Phase 2 components (ready, will wire incrementally)
-// import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
-// import { HoverTooltip } from "./components/HoverTooltip";
-// import { SignatureHelp } from "./components/SignatureHelp";
-// import { FileContextMenu } from "./components/FileContextMenu";
+import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
+import { HoverTooltip } from "./components/HoverTooltip";
+import { SignatureHelp } from "./components/SignatureHelp";
+import { FileContextMenu, FileDialog } from "./components/FileContextMenu";
 import { useLsp } from "./hooks/useLsp";
 import { useAutoSave } from "./hooks/useAutoSave";
 import type { FileNode } from "./components/FileTree";
@@ -71,6 +70,12 @@ function App() {
   const [framework, setFramework] = useState<string | null>(null);
   const [findVisible, setFindVisible] = useState(false);
   const [goToLineVisible, setGoToLineVisible] = useState(false);
+
+  const [hoverInfo, _setHoverInfo] = useState<{ content: string; x: number; y: number } | null>(null);
+  const [signatureInfo, _setSignatureInfo] = useState<{ signatures: { label: string; documentation?: string; parameters: { label: string; documentation?: string }[] }[]; activeSignature: number; activeParameter: number; x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  const [fileDialog, setFileDialog] = useState<{ title: string; defaultValue?: string; placeholder?: string; onSubmit: (v: string) => void } | null>(null);
+  const [diagnosticsPanelVisible, setDiagnosticsPanelVisible] = useState(false);
 
   const editor = useEditorStore();
   const lsp = useLsp(projectPath);
@@ -270,6 +275,9 @@ function App() {
               projectPath={projectPath}
               onFileSelect={openFile}
               onFileOpen={openFile}
+              onContextMenu={(e, path, isDir) => {
+                setContextMenu({ x: e.clientX, y: e.clientY, path, isDir });
+              }}
             />
           )}
 
@@ -337,8 +345,8 @@ function App() {
               )}
             </div>
 
-            {/* Terminal — bottom of editor area, like VS Code */}
-            {terminalVisible && (
+            {/* Bottom panel — Terminal or Diagnostics */}
+            {(terminalVisible || diagnosticsPanelVisible) && (
               <div style={{
                 height: "35%",
                 minHeight: 120,
@@ -347,7 +355,69 @@ function App() {
                 display: "flex",
                 flexDirection: "column",
               }}>
-                <XTerminal projectPath={projectPath} visible={terminalVisible} />
+                {/* Panel tabs */}
+                <div style={{
+                  display: "flex",
+                  borderBottom: "1px solid #313244",
+                  fontSize: 11,
+                  userSelect: "none",
+                  flexShrink: 0,
+                }}>
+                  <button
+                    onClick={() => { setTerminalVisible(true); setDiagnosticsPanelVisible(false); }}
+                    style={{
+                      padding: "4px 12px",
+                      background: terminalVisible ? "rgba(137,180,250,0.05)" : "transparent",
+                      border: "none",
+                      borderBottom: terminalVisible ? "2px solid #89b4fa" : "2px solid transparent",
+                      color: terminalVisible ? "#cdd6f4" : "#6c7086",
+                      cursor: "pointer",
+                      fontSize: 11,
+                    }}
+                  >
+                    💻 ターミナル
+                  </button>
+                  <button
+                    onClick={() => { setDiagnosticsPanelVisible(true); setTerminalVisible(false); }}
+                    style={{
+                      padding: "4px 12px",
+                      background: diagnosticsPanelVisible ? "rgba(137,180,250,0.05)" : "transparent",
+                      border: "none",
+                      borderBottom: diagnosticsPanelVisible ? "2px solid #89b4fa" : "2px solid transparent",
+                      color: diagnosticsPanelVisible ? "#cdd6f4" : "#6c7086",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "center",
+                    }}
+                  >
+                    📋 問題
+                    {lsp.diagnostics.length > 0 && (
+                      <span style={{
+                        background: lsp.diagnostics.some(d => d.severity === "error") ? "#f38ba8" : "#f9e2af",
+                        color: "#1e1e2e",
+                        borderRadius: 8,
+                        padding: "0 5px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}>
+                        {lsp.diagnostics.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Panel content */}
+                {terminalVisible && <XTerminal projectPath={projectPath} visible={terminalVisible} />}
+                {diagnosticsPanelVisible && (
+                  <DiagnosticsPanel
+                    diagnostics={lsp.diagnostics}
+                    onJumpTo={(path, line, _col) => {
+                      openFile(path, line);
+                    }}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -367,6 +437,7 @@ function App() {
         errors={lsp.diagnostics.filter(d => d.severity === "error").length}
         warnings={lsp.diagnostics.filter(d => d.severity === "warning").length}
         lspServers={lsp.servers}
+        onDiagnosticsClick={() => { setDiagnosticsPanelVisible(true); setTerminalVisible(false); }}
       />
 
       {/* Overlays */}
@@ -389,6 +460,103 @@ function App() {
           if (activeTab) editor.updateCursor(activeTab.id, line, 0);
         }}
       />
+
+      {/* Hover Tooltip */}
+      <HoverTooltip
+        visible={!!hoverInfo}
+        content={hoverInfo?.content ?? ""}
+        x={hoverInfo?.x ?? 0}
+        y={hoverInfo?.y ?? 0}
+      />
+
+      {/* Signature Help */}
+      <SignatureHelp
+        visible={!!signatureInfo}
+        x={signatureInfo?.x ?? 0}
+        y={signatureInfo?.y ?? 0}
+        signatures={signatureInfo?.signatures ?? []}
+        activeSignature={signatureInfo?.activeSignature ?? 0}
+        activeParameter={signatureInfo?.activeParameter ?? 0}
+      />
+
+      {/* File Context Menu */}
+      <FileContextMenu
+        visible={!!contextMenu}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        targetPath={contextMenu?.path ?? ""}
+        isDir={contextMenu?.isDir ?? false}
+        onClose={() => setContextMenu(null)}
+        onNewFile={(dir) => {
+          setContextMenu(null);
+          setFileDialog({
+            title: "新しいファイル",
+            placeholder: "ファイル名",
+            onSubmit: async (name) => {
+              const path = `${dir}/${name}`;
+              await invoke("create_file", { path });
+              setFileDialog(null);
+              if (projectPath) loadFileTree(projectPath);
+              openFile(path);
+            },
+          });
+        }}
+        onNewFolder={(dir) => {
+          setContextMenu(null);
+          setFileDialog({
+            title: "新しいフォルダ",
+            placeholder: "フォルダ名",
+            onSubmit: async (name) => {
+              await invoke("create_directory", { path: `${dir}/${name}` });
+              setFileDialog(null);
+              if (projectPath) loadFileTree(projectPath);
+            },
+          });
+        }}
+        onRename={(path) => {
+          setContextMenu(null);
+          const oldName = path.split(/[/\\]/).pop() || "";
+          setFileDialog({
+            title: "名前の変更",
+            defaultValue: oldName,
+            onSubmit: async (newName) => {
+              const dir = path.replace(/[/\\][^/\\]+$/, "");
+              await invoke("rename_path", { oldPath: path, newPath: `${dir}/${newName}` });
+              setFileDialog(null);
+              if (projectPath) loadFileTree(projectPath);
+            },
+          });
+        }}
+        onDelete={async (path) => {
+          setContextMenu(null);
+          const name = path.split(/[/\\]/).pop() || path;
+          if (confirm(`${name} を削除しますか？`)) {
+            await invoke("delete_path", { path });
+            if (projectPath) loadFileTree(projectPath);
+          }
+        }}
+        onCopyPath={(path) => {
+          setContextMenu(null);
+          navigator.clipboard.writeText(path);
+          notify("パスをコピーしました", "info", { duration: 2000 });
+        }}
+        onRevealInExplorer={(path) => {
+          setContextMenu(null);
+          invoke("exec_command", { cmd: `explorer /select,"${path.replace(/\//g, "\\")}"` });
+        }}
+      />
+
+      {/* File Dialog */}
+      {fileDialog && (
+        <FileDialog
+          visible={true}
+          title={fileDialog.title}
+          defaultValue={fileDialog.defaultValue}
+          placeholder={fileDialog.placeholder}
+          onSubmit={fileDialog.onSubmit}
+          onClose={() => setFileDialog(null)}
+        />
+      )}
 
       {/* Notifications */}
       <NotificationContainer notifications={notifications} onDismiss={dismiss} />

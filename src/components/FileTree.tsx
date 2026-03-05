@@ -13,9 +13,10 @@ interface FileTreeProps {
   root: FileNode | null;
   onFileSelect: (path: string) => void;
   selectedPath?: string;
+  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void;
 }
 
-export function FileTree({ root, onFileSelect, selectedPath }: FileTreeProps) {
+export function FileTree({ root, onFileSelect, selectedPath, onContextMenu }: FileTreeProps) {
   if (!root) {
     return (
       <div style={{ padding: "8px 12px", color: "var(--fg-muted)", fontSize: 13 }}>
@@ -33,6 +34,7 @@ export function FileTree({ root, onFileSelect, selectedPath }: FileTreeProps) {
           depth={0}
           onFileSelect={onFileSelect}
           selectedPath={selectedPath}
+          onContextMenu={onContextMenu}
         />
       ))}
     </div>
@@ -44,11 +46,13 @@ function TreeNode({
   depth,
   onFileSelect,
   selectedPath,
+  onContextMenu,
 }: {
   node: FileNode;
   depth: number;
   onFileSelect: (path: string) => void;
   selectedPath?: string;
+  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(depth < 1);
   const isSelected = selectedPath === node.path;
@@ -67,6 +71,10 @@ function TreeNode({
     <>
       <div
         onClick={handleClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu?.(e, node.path, node.isDir);
+        }}
         style={{
           padding: "2px 8px 2px 0",
           paddingLeft: indent,
@@ -126,6 +134,7 @@ function TreeNode({
           depth={depth + 1}
           onFileSelect={onFileSelect}
           selectedPath={selectedPath}
+          onContextMenu={onContextMenu}
         />
       ))}
     </>

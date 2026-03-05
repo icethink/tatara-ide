@@ -11,6 +11,7 @@ interface SidebarProps {
   projectPath?: string | null;
   onFileSelect?: (path: string) => void;
   onFileOpen?: (path: string, line?: number) => void;
+  onContextMenu?: (e: React.MouseEvent, path: string, isDir: boolean) => void;
 }
 
 export function Sidebar({
@@ -20,6 +21,7 @@ export function Sidebar({
   projectPath,
   onFileSelect,
   onFileOpen,
+  onContextMenu,
 }: SidebarProps) {
   return (
     <div className="sidebar" style={{
@@ -51,6 +53,7 @@ export function Sidebar({
           <FileTree
             root={fileTree ?? null}
             onFileSelect={onFileSelect ?? (() => {})}
+            onContextMenu={onContextMenu}
             selectedPath={selectedFilePath}
           />
         )}
