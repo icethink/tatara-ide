@@ -10,6 +10,8 @@ const panels = [
   { id: "search", icon: "🔍", label: "検索" },
   { id: "git", icon: "🌿", label: "ソース管理" },
   { id: "database", icon: "🗄️", label: "データベース" },
+  { id: "laravel", icon: "🔥", label: "Laravel" },
+  { id: "docker", icon: "🐳", label: "Docker" },
   { id: "debug", icon: "🐛", label: "デバッグ" },
   { id: "extensions", icon: "📦", label: "拡張機能" },
 ];

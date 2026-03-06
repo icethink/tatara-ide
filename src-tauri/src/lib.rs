@@ -11,6 +11,8 @@ mod git;
 mod i18n;
 mod profile;
 mod database;
+mod docker;
+mod laravel;
 mod lsp;
 mod lsp_installer;
 mod pty;
@@ -225,6 +227,81 @@ fn db_query(project_path: String, sql: String, allow_write: Option<bool>) -> Res
 #[tauri::command]
 fn db_preview(project_path: String, table: String, limit: Option<usize>) -> Result<database::QueryResult, String> {
     database::preview_table(std::path::Path::new(&project_path), &table, limit.unwrap_or(50))
+}
+
+// ── Docker Commands ──
+
+#[tauri::command]
+fn docker_detect(project_path: String) -> docker::DockerProject {
+    docker::detect_docker(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn docker_containers(project_path: String) -> Result<Vec<docker::ContainerInfo>, String> {
+    docker::list_containers(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn docker_up(project_path: String) -> Result<String, String> {
+    docker::compose_up(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn docker_down(project_path: String) -> Result<String, String> {
+    docker::compose_down(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn docker_restart(project_path: String, service: String) -> Result<String, String> {
+    docker::compose_restart(std::path::Path::new(&project_path), &service)
+}
+
+#[tauri::command]
+fn docker_stop_service(project_path: String, service: String) -> Result<String, String> {
+    docker::compose_stop(std::path::Path::new(&project_path), &service)
+}
+
+#[tauri::command]
+fn docker_logs(project_path: String, service: String, lines: Option<usize>) -> Result<docker::DockerLogChunk, String> {
+    docker::compose_logs(std::path::Path::new(&project_path), &service, lines.unwrap_or(100))
+}
+
+// ── Laravel Commands ──
+
+#[tauri::command]
+fn laravel_detect(project_path: String) -> laravel::LaravelInfo {
+    laravel::detect_laravel(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn laravel_logs(project_path: String) -> Result<Vec<laravel::LogFile>, String> {
+    laravel::list_logs(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn laravel_read_log(path: String, max_lines: Option<usize>) -> Result<Vec<laravel::LogEntry>, String> {
+    laravel::read_log(&path, max_lines.unwrap_or(500))
+}
+
+#[tauri::command]
+fn laravel_artisan(project_path: String, args: Vec<String>) -> Result<laravel::ArtisanResult, String> {
+    let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    laravel::run_artisan(std::path::Path::new(&project_path), &str_args)
+}
+
+#[tauri::command]
+fn laravel_artisan_commands(project_path: String) -> Result<Vec<String>, String> {
+    laravel::list_artisan_commands(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn laravel_routes(project_path: String) -> Result<Vec<laravel::RouteEntry>, String> {
+    laravel::route_list(std::path::Path::new(&project_path))
+}
+
+#[tauri::command]
+fn laravel_clear_cache(project_path: String, cache_type: String) -> Result<String, String> {
+    laravel::clear_cache(std::path::Path::new(&project_path), &cache_type)
 }
 
 /// Get LSP server installation status
@@ -637,6 +714,20 @@ pub fn run() {
             create_directory,
             rename_path,
             delete_path,
+            docker_detect,
+            docker_containers,
+            docker_up,
+            docker_down,
+            docker_restart,
+            docker_stop_service,
+            docker_logs,
+            laravel_detect,
+            laravel_logs,
+            laravel_read_log,
+            laravel_artisan,
+            laravel_artisan_commands,
+            laravel_routes,
+            laravel_clear_cache,
             db_connect,
             db_tables,
             db_describe,
