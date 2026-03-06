@@ -9,6 +9,7 @@ const panels = [
   { id: "explorer", icon: "📂", label: "エクスプローラー" },
   { id: "search", icon: "🔍", label: "検索" },
   { id: "git", icon: "🌿", label: "ソース管理" },
+  { id: "database", icon: "🗄️", label: "データベース" },
   { id: "debug", icon: "🐛", label: "デバッグ" },
   { id: "extensions", icon: "📦", label: "拡張機能" },
 ];

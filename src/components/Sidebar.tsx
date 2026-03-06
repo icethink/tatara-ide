@@ -3,6 +3,7 @@
 import { FileTree, type FileNode } from "./FileTree";
 import { SearchPanel } from "./SearchPanel";
 import { GitPanel } from "./GitPanel";
+import { DatabasePanel } from "./DatabasePanel";
 
 interface SidebarProps {
   activePanel: string;
@@ -66,6 +67,9 @@ export function Sidebar({
             onFileOpen={onFileOpen ?? (() => {})}
           />
         )}
+        {activePanel === "database" && (
+          <DatabasePanel projectPath={projectPath ?? null} />
+        )}
         {activePanel === "debug" && <PlaceholderPanel text="デバッグ (Phase 4)" />}
         {activePanel === "extensions" && <PlaceholderPanel text="拡張機能 (将来)" />}
       </div>
@@ -78,6 +82,7 @@ function panelTitle(panel: string): string {
     case "explorer": return "エクスプローラー";
     case "search": return "検索";
     case "git": return "ソース管理";
+    case "database": return "データベース";
     case "debug": return "デバッグ";
     case "extensions": return "拡張機能";
     default: return panel;

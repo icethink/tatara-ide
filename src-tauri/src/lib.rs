@@ -10,6 +10,7 @@ mod filesystem;
 mod git;
 mod i18n;
 mod profile;
+mod database;
 mod lsp;
 mod lsp_installer;
 mod pty;
@@ -192,6 +193,38 @@ fn read_file_raw(path: String) -> Result<serde_json::Value, String> {
         "mime": mime,
         "size": bytes.len(),
     }))
+}
+
+// ── Database Commands ──
+
+/// Connect to database from .env
+#[tauri::command]
+fn db_connect(project_path: String) -> Result<database::DbConnection, String> {
+    database::connect_from_env(std::path::Path::new(&project_path))
+}
+
+/// List all tables
+#[tauri::command]
+fn db_tables(project_path: String) -> Result<Vec<database::TableInfo>, String> {
+    database::list_tables(std::path::Path::new(&project_path))
+}
+
+/// Describe a table's columns
+#[tauri::command]
+fn db_describe(project_path: String, table: String) -> Result<Vec<database::ColumnInfo>, String> {
+    database::describe_table(std::path::Path::new(&project_path), &table)
+}
+
+/// Execute SQL query
+#[tauri::command]
+fn db_query(project_path: String, sql: String, allow_write: Option<bool>) -> Result<database::QueryResult, String> {
+    database::execute_query(std::path::Path::new(&project_path), &sql, allow_write.unwrap_or(false))
+}
+
+/// Preview table data
+#[tauri::command]
+fn db_preview(project_path: String, table: String, limit: Option<usize>) -> Result<database::QueryResult, String> {
+    database::preview_table(std::path::Path::new(&project_path), &table, limit.unwrap_or(50))
 }
 
 /// Get LSP server installation status
@@ -604,6 +637,11 @@ pub fn run() {
             create_directory,
             rename_path,
             delete_path,
+            db_connect,
+            db_tables,
+            db_describe,
+            db_query,
+            db_preview,
             lsp_server_status,
             lsp_install_for_project,
             lsp_install_server,
