@@ -13,6 +13,9 @@ interface StatusBarProps {
   warnings?: number;
   lspServers?: string[];
   onDiagnosticsClick?: () => void;
+  selectionLength?: number;
+  totalLines?: number;
+  fileSize?: string;
 }
 
 export function StatusBar({
@@ -28,6 +31,9 @@ export function StatusBar({
   warnings = 0,
   lspServers = [],
   onDiagnosticsClick,
+  selectionLength = 0,
+  totalLines,
+  fileSize,
 }: StatusBarProps) {
   return (
     <div className="status-bar" style={{
@@ -76,7 +82,16 @@ export function StatusBar({
         )}
         <span style={{ fontFamily: "var(--font-code)" }}>
           Ln {line}, Col {column}
+          {selectionLength > 0 && (
+            <span style={{ color: "#89b4fa" }}> ({selectionLength} 選択)</span>
+          )}
         </span>
+        {totalLines != null && (
+          <span style={{ color: "#585b70" }}>{totalLines} 行</span>
+        )}
+        {fileSize && (
+          <span style={{ color: "#585b70" }}>{fileSize}</span>
+        )}
         <button
           onClick={onToggleTerminal}
           title="ターミナル (Ctrl+`)"

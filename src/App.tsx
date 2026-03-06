@@ -483,6 +483,8 @@ function App() {
         warnings={lsp.diagnostics.filter(d => d.severity === "warning").length}
         lspServers={lsp.servers}
         onDiagnosticsClick={() => { setDiagnosticsPanelVisible(true); setTerminalVisible(false); }}
+        totalLines={activeTab ? activeTab.content.split("\n").length : undefined}
+        fileSize={activeTab ? formatFileSize(activeTab.content.length) : undefined}
       />
 
       {/* Overlays */}
@@ -784,6 +786,12 @@ function QuickAction({
 }
 
 // ── Helpers ──
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function detectLangForLsp(path: string): string | null {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";

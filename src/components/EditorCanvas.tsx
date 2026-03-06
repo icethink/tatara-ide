@@ -55,9 +55,28 @@ export function EditorCanvas({
   const linesRef = useRef<string[]>([]);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Undo/Redo history
+  const undoStackRef = useRef<{ content: string; line: number; col: number }[]>([]);
+  const redoStackRef = useRef<{ content: string; line: number; col: number }[]>([]);
+  const lastSnapshotRef = useRef<string>("");
+
+  // Clipboard (for canvas-based editor, we manage it ourselves)
+  const clipboardRef = useRef<string>("");
+
+  // Take undo snapshot (debounced — only when content actually changed)
+  const pushUndo = useCallback(() => {
+    if (content !== lastSnapshotRef.current) {
+      undoStackRef.current.push({ content: lastSnapshotRef.current, line: cursorLine, col: cursorColumn });
+      if (undoStackRef.current.length > 200) undoStackRef.current.shift();
+      redoStackRef.current = [];
+      lastSnapshotRef.current = content;
+    }
+  }, [content, cursorLine, cursorColumn]);
+
   // Parse content into lines
   useEffect(() => {
     linesRef.current = content.split("\n");
+    if (lastSnapshotRef.current === "") lastSnapshotRef.current = content;
   }, [content]);
 
   const lines = content.split("\n");
@@ -206,9 +225,235 @@ export function EditorCanvas({
         return;
       }
 
+      // ── Undo (Ctrl+Z) ──
+      if (ctrl && !shift && e.key === "z") {
+        e.preventDefault();
+        const stack = undoStackRef.current;
+        if (stack.length === 0) return;
+        redoStackRef.current.push({ content, line: cursorLine, col: cursorColumn });
+        const prev = stack.pop()!;
+        lastSnapshotRef.current = prev.content;
+        onContentChange(prev.content);
+        onCursorChange(prev.line, prev.col);
+        return;
+      }
+
+      // ── Redo (Ctrl+Shift+Z / Ctrl+Y) ──
+      if ((ctrl && shift && e.key === "z") || (ctrl && e.key === "y")) {
+        e.preventDefault();
+        const stack = redoStackRef.current;
+        if (stack.length === 0) return;
+        undoStackRef.current.push({ content, line: cursorLine, col: cursorColumn });
+        const next = stack.pop()!;
+        lastSnapshotRef.current = next.content;
+        onContentChange(next.content);
+        onCursorChange(next.line, next.col);
+        return;
+      }
+
+      // ── Copy (Ctrl+C) ──
+      if (ctrl && e.key === "c") {
+        e.preventDefault();
+        if (selection) {
+          const { start, end } = normalizeSelection(selection);
+          const selectedText = getTextInRange(lines, start, end);
+          clipboardRef.current = selectedText;
+          navigator.clipboard.writeText(selectedText).catch(() => {});
+        } else {
+          // Copy entire line (VS Code behavior)
+          const lineText = lines[cursorLine] + "\n";
+          clipboardRef.current = lineText;
+          navigator.clipboard.writeText(lineText).catch(() => {});
+        }
+        return;
+      }
+
+      // ── Cut (Ctrl+X) ──
+      if (ctrl && e.key === "x") {
+        e.preventDefault();
+        pushUndo();
+        if (selection) {
+          const { start, end } = normalizeSelection(selection);
+          const selectedText = getTextInRange(lines, start, end);
+          clipboardRef.current = selectedText;
+          navigator.clipboard.writeText(selectedText).catch(() => {});
+          deleteSelection();
+        } else {
+          // Cut entire line
+          const lineText = lines[cursorLine] + "\n";
+          clipboardRef.current = lineText;
+          navigator.clipboard.writeText(lineText).catch(() => {});
+          const newLines = [...lines];
+          if (newLines.length > 1) {
+            newLines.splice(cursorLine, 1);
+            const newLine = Math.min(cursorLine, newLines.length - 1);
+            onContentChange(newLines.join("\n"));
+            onCursorChange(newLine, Math.min(cursorColumn, newLines[newLine]?.length ?? 0));
+          } else {
+            newLines[0] = "";
+            onContentChange("");
+            onCursorChange(0, 0);
+          }
+        }
+        return;
+      }
+
+      // ── Paste (Ctrl+V) ──
+      if (ctrl && e.key === "v") {
+        e.preventDefault();
+        pushUndo();
+        navigator.clipboard.readText().then((text) => {
+          if (text) {
+            if (selection) deleteSelection();
+            insertTextAtCursor(text);
+          }
+        }).catch(() => {
+          // Fallback to internal clipboard
+          if (clipboardRef.current) {
+            if (selection) deleteSelection();
+            insertTextAtCursor(clipboardRef.current);
+          }
+        });
+        return;
+      }
+
+      // ── Duplicate Line (Ctrl+D) ──
+      if (ctrl && e.key === "d") {
+        e.preventDefault();
+        pushUndo();
+        const newLines = [...lines];
+        newLines.splice(cursorLine + 1, 0, lines[cursorLine]);
+        onContentChange(newLines.join("\n"));
+        onCursorChange(cursorLine + 1, cursorColumn);
+        return;
+      }
+
+      // ── Delete Line (Ctrl+Shift+K) ──
+      if (ctrl && shift && e.key === "K") {
+        e.preventDefault();
+        pushUndo();
+        const newLines = [...lines];
+        if (newLines.length > 1) {
+          newLines.splice(cursorLine, 1);
+          const newLine = Math.min(cursorLine, newLines.length - 1);
+          onContentChange(newLines.join("\n"));
+          onCursorChange(newLine, Math.min(cursorColumn, newLines[newLine]?.length ?? 0));
+        } else {
+          onContentChange("");
+          onCursorChange(0, 0);
+        }
+        return;
+      }
+
+      // ── Move Line Up (Alt+Up) ──
+      if (e.altKey && !ctrl && e.key === "ArrowUp") {
+        e.preventDefault();
+        if (cursorLine > 0) {
+          pushUndo();
+          const newLines = [...lines];
+          [newLines[cursorLine - 1], newLines[cursorLine]] = [newLines[cursorLine], newLines[cursorLine - 1]];
+          onContentChange(newLines.join("\n"));
+          onCursorChange(cursorLine - 1, cursorColumn);
+        }
+        return;
+      }
+
+      // ── Move Line Down (Alt+Down) ──
+      if (e.altKey && !ctrl && e.key === "ArrowDown") {
+        e.preventDefault();
+        if (cursorLine < totalLines - 1) {
+          pushUndo();
+          const newLines = [...lines];
+          [newLines[cursorLine], newLines[cursorLine + 1]] = [newLines[cursorLine + 1], newLines[cursorLine]];
+          onContentChange(newLines.join("\n"));
+          onCursorChange(cursorLine + 1, cursorColumn);
+        }
+        return;
+      }
+
+      // ── Toggle Comment (Ctrl+/) ──
+      if (ctrl && e.key === "/") {
+        e.preventDefault();
+        pushUndo();
+        const commentPrefix = getCommentPrefix(language);
+        const line = lines[cursorLine];
+        const trimmed = line.trimStart();
+        const indent = line.slice(0, line.length - trimmed.length);
+        const newLines = [...lines];
+
+        if (trimmed.startsWith(commentPrefix)) {
+          // Uncomment
+          const afterComment = trimmed.slice(commentPrefix.length);
+          const uncommented = afterComment.startsWith(" ") ? afterComment.slice(1) : afterComment;
+          newLines[cursorLine] = indent + uncommented;
+        } else {
+          // Comment
+          newLines[cursorLine] = indent + commentPrefix + " " + trimmed;
+        }
+        onContentChange(newLines.join("\n"));
+        return;
+      }
+
+      // ── Select Word (Ctrl+D without selection → select word at cursor) ──
+      // Already handled above as duplicate line when no selection
+      // TODO: VS Code does select-word first, then add-to-selection
+
+      // ── Page Up / Page Down ──
+      if (e.key === "PageUp") {
+        e.preventDefault();
+        const visibleLines = Math.floor((canvasRef.current?.clientHeight ?? 400) / (rendererRef.current?.getLineHeight() ?? 22));
+        const newLine = Math.max(0, cursorLine - visibleLines);
+        onCursorChange(newLine, Math.min(cursorColumn, lines[newLine]?.length ?? 0));
+        return;
+      }
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        const visibleLines = Math.floor((canvasRef.current?.clientHeight ?? 400) / (rendererRef.current?.getLineHeight() ?? 22));
+        const newLine = Math.min(totalLines - 1, cursorLine + visibleLines);
+        onCursorChange(newLine, Math.min(cursorColumn, lines[newLine]?.length ?? 0));
+        return;
+      }
+
+      // ── Ctrl+Home / Ctrl+End ──
+      if (ctrl && e.key === "Home") {
+        e.preventDefault();
+        onCursorChange(0, 0);
+        if (!shift) setSelection(null);
+        return;
+      }
+      if (ctrl && e.key === "End") {
+        e.preventDefault();
+        onCursorChange(totalLines - 1, lines[totalLines - 1]?.length ?? 0);
+        if (!shift) setSelection(null);
+        return;
+      }
+
+      // ── Word navigation (Ctrl+Left / Ctrl+Right) ──
+      if (ctrl && e.key === "ArrowLeft") {
+        e.preventDefault();
+        const line = lines[cursorLine] ?? "";
+        const before = line.slice(0, cursorColumn);
+        const match = before.match(/\S+\s*$/);
+        const newCol = match ? cursorColumn - match[0].length : 0;
+        onCursorChange(cursorLine, newCol);
+        if (!shift) setSelection(null);
+        return;
+      }
+      if (ctrl && e.key === "ArrowRight") {
+        e.preventDefault();
+        const line = lines[cursorLine] ?? "";
+        const after = line.slice(cursorColumn);
+        const match = after.match(/^\s*\S+/);
+        const newCol = match ? cursorColumn + match[0].length : line.length;
+        onCursorChange(cursorLine, newCol);
+        if (!shift) setSelection(null);
+        return;
+      }
+
       // Backspace
       if (e.key === "Backspace") {
         e.preventDefault();
+        pushUndo();
         if (selection) {
           deleteSelection();
           return;
@@ -236,6 +481,7 @@ export function EditorCanvas({
       // Delete
       if (e.key === "Delete") {
         e.preventDefault();
+        pushUndo();
         if (selection) {
           deleteSelection();
           return;
@@ -259,6 +505,7 @@ export function EditorCanvas({
       // Enter
       if (e.key === "Enter") {
         e.preventDefault();
+        pushUndo();
         if (selection) deleteSelection();
         const line = lines[cursorLine];
         const before = line.slice(0, cursorColumn);
@@ -303,13 +550,43 @@ export function EditorCanvas({
         return;
       }
     },
-    [lines, cursorLine, cursorColumn, totalLines, selection, onContentChange, onCursorChange, onSave]
+    [lines, cursorLine, cursorColumn, totalLines, selection, content, language, onContentChange, onCursorChange, onSave, pushUndo]
   );
 
   // ── Text Input (for regular characters and IME) ──
 
+  // Insert multi-line text at cursor position
+  const insertTextAtCursor = useCallback(
+    (text: string) => {
+      const textLines = text.split("\n");
+      const currentLines = content.split("\n");
+      const line = currentLines[cursorLine] ?? "";
+      const before = line.slice(0, cursorColumn);
+      const after = line.slice(cursorColumn);
+
+      if (textLines.length === 1) {
+        currentLines[cursorLine] = before + textLines[0] + after;
+        onContentChange(currentLines.join("\n"));
+        onCursorChange(cursorLine, cursorColumn + textLines[0].length);
+      } else {
+        const newLines = [
+          ...currentLines.slice(0, cursorLine),
+          before + textLines[0],
+          ...textLines.slice(1, -1),
+          textLines[textLines.length - 1] + after,
+          ...currentLines.slice(cursorLine + 1),
+        ];
+        onContentChange(newLines.join("\n"));
+        const lastInsertedLine = cursorLine + textLines.length - 1;
+        onCursorChange(lastInsertedLine, textLines[textLines.length - 1].length);
+      }
+    },
+    [content, cursorLine, cursorColumn, onContentChange, onCursorChange]
+  );
+
   const insertText = useCallback(
     (text: string) => {
+      pushUndo();
       const line = lines[cursorLine] ?? "";
       const newLine = line.slice(0, cursorColumn) + text + line.slice(cursorColumn);
 
@@ -370,7 +647,7 @@ export function EditorCanvas({
         onCompletionDismiss?.();
       }
     },
-    [lines, cursorLine, cursorColumn, totalLines, scrollTop, onContentChange, onCursorChange, onSignatureRequest, onSignatureDismiss, onCompletionRequest, onCompletionDismiss]
+    [lines, cursorLine, cursorColumn, totalLines, scrollTop, onContentChange, onCursorChange, onSignatureRequest, onSignatureDismiss, onCompletionRequest, onCompletionDismiss, pushUndo]
   );
 
   const deleteSelection = useCallback(() => {
@@ -426,6 +703,33 @@ export function EditorCanvas({
       onCursorChange(clampedLine, clampedCol);
       setSelection(null);
       setIsSelecting(true);
+
+      // Double-click: select word
+      if (e.detail === 2) {
+        const lineText = lines[clampedLine] ?? "";
+        const wordMatch = lineText.slice(0, clampedCol).match(/[\w$]+$/);
+        const wordAfter = lineText.slice(clampedCol).match(/^[\w$]+/);
+        const startCol = wordMatch ? clampedCol - wordMatch[0].length : clampedCol;
+        const endCol = wordAfter ? clampedCol + wordAfter[0].length : clampedCol;
+        if (startCol !== endCol) {
+          setSelection({
+            start: { line: clampedLine, column: startCol },
+            end: { line: clampedLine, column: endCol },
+          });
+          onCursorChange(clampedLine, endCol);
+        }
+        setIsSelecting(false);
+      }
+
+      // Triple-click: select line
+      if (e.detail === 3) {
+        setSelection({
+          start: { line: clampedLine, column: 0 },
+          end: { line: clampedLine, column: lines[clampedLine]?.length ?? 0 },
+        });
+        onCursorChange(clampedLine, lines[clampedLine]?.length ?? 0);
+        setIsSelecting(false);
+      }
 
       // Focus hidden textarea for keyboard input
       textareaRef.current?.focus();
@@ -548,6 +852,38 @@ export function EditorCanvas({
       />
     </div>
   );
+}
+
+function getTextInRange(lines: string[], start: { line: number; column: number }, end: { line: number; column: number }): string {
+  if (start.line === end.line) {
+    return lines[start.line]?.slice(start.column, end.column) ?? "";
+  }
+  const result: string[] = [];
+  result.push((lines[start.line] ?? "").slice(start.column));
+  for (let i = start.line + 1; i < end.line; i++) {
+    result.push(lines[i] ?? "");
+  }
+  result.push((lines[end.line] ?? "").slice(0, end.column));
+  return result.join("\n");
+}
+
+function getCommentPrefix(language: string): string {
+  switch (language) {
+    case "php": case "javascript": case "typescript": case "javascriptreact":
+    case "typescriptreact": case "rust": case "java": case "c": case "cpp":
+    case "go": case "swift": case "kotlin": case "dart": case "scss": case "less":
+      return "//";
+    case "python": case "ruby": case "yaml": case "toml": case "shell": case "bash":
+      return "#";
+    case "html": case "xml": case "vue": case "blade": case "svg":
+      return "<!--"; // simplified — ideally should close with -->
+    case "css":
+      return "/*"; // simplified
+    case "lua": case "sql":
+      return "--";
+    default:
+      return "//";
+  }
 }
 
 function findMatchingBracket(lines: string[], line: number, col: number): { line: number; column: number } | null {
