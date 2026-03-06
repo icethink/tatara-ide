@@ -58,6 +58,13 @@ export interface Selection {
 
 export type GutterMark = "added" | "modified" | "deleted";
 
+export interface DiagnosticMark {
+  line: number;
+  startCol: number;
+  endCol: number;
+  severity: "error" | "warning" | "information" | "hint";
+}
+
 export interface RenderState {
   lines: string[];
   cursor: CursorPos;
@@ -67,6 +74,7 @@ export interface RenderState {
   totalLines: number;
   lineTokens?: ColoredSpan[][];
   gutterMarks?: Map<number, GutterMark>;
+  diagnosticMarks?: DiagnosticMark[];
 }
 
 export interface ColoredSpan {
@@ -250,6 +258,37 @@ export class CanvasRenderer {
     ctx.moveTo(gutterW, 0);
     ctx.lineTo(gutterW, h);
     ctx.stroke();
+
+    // Diagnostic squiggly lines
+    if (state.diagnosticMarks) {
+      for (const mark of state.diagnosticMarks) {
+        if (mark.line < firstVisible || mark.line >= firstVisible + state.lines.length) continue;
+        const screenLine = mark.line - firstVisible;
+        const lineY = offsetY + screenLine * cfg.lineHeight;
+        const startX = gutterW + cfg.padding + mark.startCol * this.charWidth;
+        const endX = gutterW + cfg.padding + mark.endCol * this.charWidth;
+        const squiggleY = lineY + cfg.lineHeight - 3;
+
+        ctx.strokeStyle = mark.severity === "error" ? "#f38ba8"
+          : mark.severity === "warning" ? "#f9e2af"
+          : mark.severity === "information" ? "#89b4fa"
+          : "#a6e3a1";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+
+        const amplitude = 2;
+        const wavelength = 4;
+        for (let x = startX; x < endX; x += 1) {
+          const y = squiggleY + amplitude * Math.sin((x - startX) * Math.PI / wavelength);
+          if (x === startX) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+    }
 
     // Cursor
     if (this.cursorVisible && state.cursor.line >= firstVisible) {

@@ -1,6 +1,6 @@
-// ⚒️ Tab Bar — Editor tabs with modified indicator and close button
+// ⚒️ Tab Bar — Editor tabs with drag reorder, modified indicator, close button
 
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export interface Tab {
   id: string;
@@ -15,9 +15,13 @@ interface TabBarProps {
   activeTabId: string | null;
   onTabSelect: (id: string) => void;
   onTabClose: (id: string) => void;
+  onTabReorder?: (fromIndex: number, toIndex: number) => void;
 }
 
-export function TabBar({ tabs, activeTabId, onTabSelect, onTabClose }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onTabSelect, onTabClose, onTabReorder }: TabBarProps) {
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragIndexRef = useRef<number | null>(null);
+
   if (tabs.length === 0) return null;
 
   return (
@@ -35,13 +39,27 @@ export function TabBar({ tabs, activeTabId, onTabSelect, onTabClose }: TabBarPro
         overflow: "auto",
         scrollbarWidth: "none",
       }}>
-        {tabs.map((tab) => (
+        {tabs.map((tab, index) => (
           <TabItem
             key={tab.id}
             tab={tab}
             active={tab.id === activeTabId}
+            isDragOver={dragOverIndex === index}
             onSelect={() => onTabSelect(tab.id)}
             onClose={() => onTabClose(tab.id)}
+            onDragStart={() => { dragIndexRef.current = index; }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOverIndex(index);
+            }}
+            onDragEnd={() => {
+              if (dragIndexRef.current !== null && dragOverIndex !== null && dragIndexRef.current !== dragOverIndex) {
+                onTabReorder?.(dragIndexRef.current, dragOverIndex);
+              }
+              dragIndexRef.current = null;
+              setDragOverIndex(null);
+            }}
+            onDragLeave={() => setDragOverIndex(null)}
           />
         ))}
       </div>
@@ -52,13 +70,23 @@ export function TabBar({ tabs, activeTabId, onTabSelect, onTabClose }: TabBarPro
 function TabItem({
   tab,
   active,
+  isDragOver,
   onSelect,
   onClose,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDragLeave,
 }: {
   tab: Tab;
   active: boolean;
+  isDragOver: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  onDragLeave: () => void;
 }) {
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
@@ -71,19 +99,26 @@ function TabItem({
   return (
     <div
       onClick={onSelect}
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDragLeave={onDragLeave}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 6,
         padding: "0 12px",
-        cursor: "pointer",
+        cursor: "grab",
         fontSize: 13,
         color: active ? "var(--tab-active-fg)" : "var(--tab-inactive-fg)",
         background: active ? "var(--tab-active-bg)" : "transparent",
         borderBottom: active ? "1px solid var(--accent)" : "1px solid transparent",
         borderRight: "1px solid var(--border)",
+        borderLeft: isDragOver ? "2px solid var(--accent)" : "2px solid transparent",
         minWidth: 0,
         whiteSpace: "nowrap",
+        transition: "border-left 0.1s",
       }}
     >
       {/* File icon */}

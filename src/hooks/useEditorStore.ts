@@ -211,6 +211,15 @@ export function useEditorStore() {
     return tabs.filter((t) => t.modified);
   }, [tabs]);
 
+  const reorderTabs = useCallback((fromIndex: number, toIndex: number) => {
+    setTabs((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }, []);
+
   return {
     tabs,
     activeTabId,
@@ -227,5 +236,6 @@ export function useEditorStore() {
     updateCursor,
     updateScroll,
     getModifiedTabs,
+    reorderTabs,
   };
 }

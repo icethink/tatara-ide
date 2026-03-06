@@ -9,7 +9,7 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import { CanvasRenderer } from "../lib/renderer";
-import type { Selection, RenderState, ColoredSpan } from "../lib/renderer";
+import type { Selection, RenderState, ColoredSpan, DiagnosticMark } from "../lib/renderer";
 import { tokenizeLine, colorizeTokens } from "../lib/syntax";
 
 interface EditorCanvasProps {
@@ -20,6 +20,13 @@ interface EditorCanvasProps {
   onContentChange: (content: string) => void;
   onCursorChange: (line: number, column: number) => void;
   onSave?: () => void;
+  diagnosticMarks?: DiagnosticMark[];
+  onHoverRequest?: (line: number, col: number, x: number, y: number) => void;
+  onHoverDismiss?: () => void;
+  onSignatureRequest?: (line: number, col: number, x: number, y: number) => void;
+  onSignatureDismiss?: () => void;
+  onCompletionRequest?: (line: number, col: number, x: number, y: number, prefix: string) => void;
+  onCompletionDismiss?: () => void;
 }
 
 export function EditorCanvas({
@@ -30,6 +37,13 @@ export function EditorCanvas({
   onContentChange,
   onCursorChange,
   onSave,
+  diagnosticMarks,
+  onHoverRequest,
+  onHoverDismiss,
+  onSignatureRequest,
+  onSignatureDismiss,
+  onCompletionRequest,
+  onCompletionDismiss,
 }: EditorCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -39,6 +53,7 @@ export function EditorCanvas({
   const [selection, setSelection] = useState<Selection | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const linesRef = useRef<string[]>([]);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Parse content into lines
   useEffect(() => {
@@ -105,6 +120,7 @@ export function EditorCanvas({
       matchBracketPos: null, // TODO: bracket matching
       totalLines,
       lineTokens,
+      diagnosticMarks,
     };
 
     renderer.render(state);
@@ -313,8 +329,48 @@ export function EditorCanvas({
 
       onContentChange(newLines.join("\n"));
       onCursorChange(cursorLine, cursorColumn + text.length);
+
+      // Trigger signature help on '('
+      if (text === "(") {
+        const canvas = canvasRef.current;
+        const renderer = rendererRef.current;
+        if (canvas && renderer) {
+          const rect = canvas.getBoundingClientRect();
+          const gutterW = renderer.getGutterWidth(totalLines);
+          const px = rect.left + gutterW + 8 + (cursorColumn + 1) * renderer.getCharWidth();
+          const py = rect.top + (cursorLine - Math.floor(scrollTop / renderer.getLineHeight())) * renderer.getLineHeight();
+          onSignatureRequest?.(cursorLine, cursorColumn + 1, px, py);
+        }
+      } else if (text === ")" || text === "\n") {
+        onSignatureDismiss?.();
+      }
+
+      // Trigger completion on alphanumeric / $ / > / :
+      if (text.length === 1 && /[a-zA-Z0-9_$>:]/.test(text)) {
+        const lineContent = (autoClose
+          ? line.slice(0, cursorColumn) + text + autoClose + line.slice(cursorColumn)
+          : newLine);
+        // Extract prefix (word before cursor)
+        const beforeCursor = lineContent.slice(0, cursorColumn + text.length);
+        const prefixMatch = beforeCursor.match(/[\w$>:]+$/);
+        const prefix = prefixMatch ? prefixMatch[0] : "";
+
+        if (prefix.length >= 1) {
+          const canvas = canvasRef.current;
+          const renderer = rendererRef.current;
+          if (canvas && renderer) {
+            const rect = canvas.getBoundingClientRect();
+            const gutterW = renderer.getGutterWidth(totalLines);
+            const px = rect.left + gutterW + 8 + (cursorColumn + 1) * renderer.getCharWidth();
+            const py = rect.top + (cursorLine - Math.floor(scrollTop / renderer.getLineHeight()) + 1) * renderer.getLineHeight();
+            onCompletionRequest?.(cursorLine, cursorColumn + text.length, px, py, prefix);
+          }
+        }
+      } else if (text.length === 1 && /\s/.test(text)) {
+        onCompletionDismiss?.();
+      }
     },
-    [lines, cursorLine, cursorColumn, onContentChange, onCursorChange]
+    [lines, cursorLine, cursorColumn, totalLines, scrollTop, onContentChange, onCursorChange, onSignatureRequest, onSignatureDismiss, onCompletionRequest, onCompletionDismiss]
   );
 
   const deleteSelection = useCallback(() => {
@@ -379,7 +435,6 @@ export function EditorCanvas({
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!isSelecting) return;
       const renderer = rendererRef.current;
       if (!renderer) return;
 
@@ -392,12 +447,24 @@ export function EditorCanvas({
       const lineLen = lines[line]?.length ?? 0;
       const col = Math.max(0, Math.min(lineLen, renderer.getColumnAtX(x, gutterW)));
 
-      setSelection({
-        start: { line: cursorLine, column: cursorColumn },
-        end: { line, column: col },
-      });
+      // Selection dragging
+      if (isSelecting) {
+        setSelection({
+          start: { line: cursorLine, column: cursorColumn },
+          end: { line, column: col },
+        });
+      }
+
+      // Hover detection (300ms delay)
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      onHoverDismiss?.();
+      hoverTimerRef.current = setTimeout(() => {
+        if (!isSelecting) {
+          onHoverRequest?.(line, col, e.clientX, e.clientY + 20);
+        }
+      }, 300);
     },
-    [isSelecting, totalLines, scrollTop, lines, cursorLine, cursorColumn]
+    [isSelecting, totalLines, scrollTop, lines, cursorLine, cursorColumn, onHoverRequest, onHoverDismiss]
   );
 
   const handleMouseUp = useCallback(() => {

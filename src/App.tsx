@@ -19,9 +19,11 @@ import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { HoverTooltip } from "./components/HoverTooltip";
 import { SignatureHelp } from "./components/SignatureHelp";
 import { FileContextMenu, FileDialog } from "./components/FileContextMenu";
+import { Autocomplete } from "./components/Autocomplete";
 import { useLsp } from "./hooks/useLsp";
 import { useAutoSave } from "./hooks/useAutoSave";
 import type { FileNode } from "./components/FileTree";
+import type { CompletionKind } from "./lib/autocomplete";
 
 // ── Tauri IPC (graceful fallback for browser dev) ──
 let tauriInvoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
@@ -71,11 +73,15 @@ function App() {
   const [findVisible, setFindVisible] = useState(false);
   const [goToLineVisible, setGoToLineVisible] = useState(false);
 
-  const [hoverInfo, _setHoverInfo] = useState<{ content: string; x: number; y: number } | null>(null);
-  const [signatureInfo, _setSignatureInfo] = useState<{ signatures: { label: string; documentation?: string; parameters: { label: string; documentation?: string }[] }[]; activeSignature: number; activeParameter: number; x: number; y: number } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ content: string; x: number; y: number } | null>(null);
+  const [signatureInfo, setSignatureInfo] = useState<{ signatures: { label: string; documentation?: string; parameters: { label: string; documentation?: string }[] }[]; activeSignature: number; activeParameter: number; x: number; y: number } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
   const [fileDialog, setFileDialog] = useState<{ title: string; defaultValue?: string; placeholder?: string; onSubmit: (v: string) => void } | null>(null);
   const [diagnosticsPanelVisible, setDiagnosticsPanelVisible] = useState(false);
+  const [completionState, setCompletionState] = useState<{
+    items: { label: string; kind: CompletionKind; detail?: string; insertText: string; sortPriority: number }[];
+    x: number; y: number; prefix: string; line: number; col: number;
+  } | null>(null);
 
   const editor = useEditorStore();
   const lsp = useLsp(projectPath);
@@ -289,6 +295,7 @@ function App() {
               activeTabId={editor.activeTabId}
               onTabSelect={editor.setActiveTabId}
               onTabClose={editor.closeTab}
+              onTabReorder={editor.reorderTabs}
             />
 
             {/* Breadcrumb */}
@@ -328,12 +335,50 @@ function App() {
                     cursorLine={activeTab.cursorLine}
                     cursorColumn={activeTab.cursorColumn}
                     onContentChange={(content) => {
-                    editor.updateTabContent(activeTab.id, content);
-                    const lang = detectLangForLsp(activeTab.path);
-                    if (lang) lsp.didChange(activeTab.path, lang, content);
-                  }}
+                      editor.updateTabContent(activeTab.id, content);
+                      const lang = detectLangForLsp(activeTab.path);
+                      if (lang) lsp.didChange(activeTab.path, lang, content);
+                    }}
                     onCursorChange={(line, col) => editor.updateCursor(activeTab.id, line, col)}
                     onSave={saveFile}
+                    diagnosticMarks={lsp.getDiagnosticsForFile(activeTab.path).map(d => ({
+                      line: d.line,
+                      startCol: d.column,
+                      endCol: d.endColumn,
+                      severity: d.severity,
+                    }))}
+                    onHoverRequest={async (line, col, x, y) => {
+                      const lang = detectLangForLsp(activeTab.path);
+                      if (!lang) return;
+                      const result = await lsp.hover(activeTab.path, lang, line, col);
+                      if (result) {
+                        setHoverInfo({ content: result.contents, x, y });
+                      }
+                    }}
+                    onHoverDismiss={() => setHoverInfo(null)}
+                    onSignatureRequest={async (_line, _col, _x, _y) => {
+                      // TODO: wire to lsp.signatureHelp when available
+                      // For now signature is triggered but needs backend
+                    }}
+                    onSignatureDismiss={() => setSignatureInfo(null)}
+                    onCompletionRequest={async (line, col, x, y, prefix) => {
+                      const lang = detectLangForLsp(activeTab.path);
+                      if (!lang) return;
+                      const rawItems = await lsp.completion(activeTab.path, lang, line, col);
+                      if (rawItems.length > 0) {
+                        const items = rawItems.map((item, i) => ({
+                          label: item.label,
+                          kind: (item.kind || "keyword") as CompletionKind,
+                          detail: item.detail,
+                          insertText: item.insert_text || item.label,
+                          sortPriority: i,
+                        }));
+                        setCompletionState({ items, x, y, prefix, line, col });
+                      } else {
+                        setCompletionState(null);
+                      }
+                    }}
+                    onCompletionDismiss={() => setCompletionState(null)}
                   />
                 )
               ) : (
@@ -459,6 +504,30 @@ function App() {
         onJump={(line) => {
           if (activeTab) editor.updateCursor(activeTab.id, line, 0);
         }}
+      />
+
+      {/* Autocomplete */}
+      <Autocomplete
+        visible={!!completionState}
+        items={completionState?.items ?? []}
+        x={completionState?.x ?? 0}
+        y={completionState?.y ?? 0}
+        onSelect={(item) => {
+          const tab = editor.activeTab;
+          if (!tab || !completionState) return;
+          const lines = tab.content.split("\n");
+          const line = lines[completionState.line] ?? "";
+          // Replace the prefix with the selected item
+          const insertText = item.insertText || item.label;
+          const prefixLen = completionState.prefix.length;
+          const before = line.slice(0, completionState.col - prefixLen);
+          const after = line.slice(completionState.col);
+          lines[completionState.line] = before + insertText + after;
+          editor.updateTabContent(tab.id, lines.join("\n"));
+          editor.updateCursor(tab.id, completionState.line, before.length + insertText.length);
+          setCompletionState(null);
+        }}
+        onClose={() => setCompletionState(null)}
       />
 
       {/* Hover Tooltip */}
