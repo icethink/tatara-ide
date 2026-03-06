@@ -117,7 +117,7 @@ export function EditorCanvas({
       cursor: { line: cursorLine, column: cursorColumn },
       selection,
       scrollTop,
-      matchBracketPos: null, // TODO: bracket matching
+      matchBracketPos: findMatchingBracket(lines, cursorLine, cursorColumn),
       totalLines,
       lineTokens,
       diagnosticMarks,
@@ -548,6 +548,64 @@ export function EditorCanvas({
       />
     </div>
   );
+}
+
+function findMatchingBracket(lines: string[], line: number, col: number): { line: number; column: number } | null {
+  const brackets: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
+  const closeBrackets: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  const currentLine = lines[line];
+  if (!currentLine) return null;
+
+  const ch = currentLine[col];
+  const prevCh = col > 0 ? currentLine[col - 1] : undefined;
+
+  // Check current char or previous char
+  let searchChar: string;
+  let searchCol: number;
+  let isForward: boolean;
+
+  if (ch && brackets[ch]) {
+    searchChar = ch;
+    searchCol = col;
+    isForward = true;
+  } else if (prevCh && closeBrackets[prevCh]) {
+    searchChar = prevCh;
+    searchCol = col - 1;
+    isForward = false;
+  } else if (ch && closeBrackets[ch]) {
+    searchChar = ch;
+    searchCol = col;
+    isForward = false;
+  } else if (prevCh && brackets[prevCh]) {
+    searchChar = prevCh;
+    searchCol = col - 1;
+    isForward = true;
+  } else {
+    return null;
+  }
+
+  const matchChar = isForward ? brackets[searchChar] : closeBrackets[searchChar];
+  let depth = 0;
+
+  if (isForward) {
+    for (let l = line; l < lines.length && l < line + 500; l++) {
+      const startC = l === line ? searchCol : 0;
+      for (let c = startC; c < lines[l].length; c++) {
+        if (lines[l][c] === searchChar) depth++;
+        if (lines[l][c] === matchChar) { depth--; if (depth === 0) return { line: l, column: c }; }
+      }
+    }
+  } else {
+    for (let l = line; l >= 0 && l > line - 500; l--) {
+      const startC = l === line ? searchCol : lines[l].length - 1;
+      for (let c = startC; c >= 0; c--) {
+        if (lines[l][c] === searchChar) depth++;
+        if (lines[l][c] === matchChar) { depth--; if (depth === 0) return { line: l, column: c }; }
+      }
+    }
+  }
+
+  return null;
 }
 
 function normalizeSelection(sel: Selection): Selection {

@@ -38,6 +38,13 @@ export const defaultBindings: KeyBinding[] = [
   { key: "ctrl+h", action: "editor.replace", label: "置換", category: "search" },
   { key: "ctrl+w", action: "file.close", label: "タブを閉じる", category: "file" },
   { key: "ctrl+s", action: "file.save", label: "保存", category: "file" },
+  { key: "ctrl+shift+t", action: "file.reopenClosed", label: "閉じたタブを復元", category: "file" },
+  // Laravel
+  { key: "", action: "laravel.migrate", label: "Laravel: マイグレーション実行", category: "laravel" },
+  { key: "", action: "laravel.migrateStatus", label: "Laravel: マイグレーション状態", category: "laravel" },
+  { key: "", action: "laravel.clearAll", label: "Laravel: 全キャッシュクリア", category: "laravel" },
+  { key: "", action: "laravel.routeList", label: "Laravel: ルート一覧", category: "laravel" },
+  { key: "", action: "laravel.tinker", label: "Laravel: Tinker", category: "laravel" },
   { key: "ctrl+shift+s", action: "file.saveAll", label: "すべて保存", category: "file" },
   { key: "ctrl+shift+t", action: "file.reopenClosed", label: "閉じたタブを復元", category: "file" },
   { key: "f5", action: "debug.start", label: "デバッグ開始", category: "debug" },
